@@ -24,7 +24,6 @@ export default function QuevedoVIP() {
   const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // --- AUTOMATIC SESSION RESTORE ---
   useEffect(() => {
     const savedEmail = localStorage.getItem('quevedo_vip_user');
     if (savedEmail) {
@@ -45,18 +44,13 @@ export default function QuevedoVIP() {
     }
   };
 
-  // --- LOGIN & LOGOUT LOGIC ---
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     const mail = email.toLowerCase().trim();
 
     const { data: whitelist } = await supabase.from('allowed_users').select('email').eq('email', mail).single();
-
-    if (!whitelist) {
-      setError('Acesso Negado. E-mail não encontrado na lista VIP.');
-      return;
-    }
+    if (!whitelist) { setError('Acesso Negado. E-mail não encontrado na lista VIP.'); return; }
 
     let { data: uStats } = await supabase.from('user_stats').select('*').eq('email', mail).single();
     
@@ -73,87 +67,57 @@ export default function QuevedoVIP() {
 
   const handleLogout = () => {
     localStorage.removeItem('quevedo_vip_user');
-    setUser(null);
-    setStats({ count: 5, xp: 0 });
-    setFeedback(null);
-    setText('');
+    setUser(null); setStats({ count: 5, xp: 0 }); setFeedback(null); setText('');
   };
 
-  // --- API GENERATORS (Fixed Language Bug) ---
   const loadRandomWord = async () => {
-    setIsLoading(true);
-    setFeedback(null);
+    setIsLoading(true); setFeedback(null);
     try {
-      // Added ?lang=en to force English words only
       const response = await fetch('https://random-word-api.herokuapp.com/word?lang=en');
       const data = await response.json();
       setText(data[0].charAt(0).toUpperCase() + data[0].slice(1)); 
-    } catch (err) {
-      setText(fallbackWords[Math.floor(Math.random() * fallbackWords.length)]);
-    }
+    } catch (err) { setText(fallbackWords[Math.floor(Math.random() * fallbackWords.length)]); }
     setIsLoading(false);
   };
 
   const loadRandomPhrase = async () => {
-    setIsLoading(true);
-    setFeedback(null);
+    setIsLoading(true); setFeedback(null);
     try {
       const response = await fetch('https://dummyjson.com/quotes/random');
       const data = await response.json();
       setText(data.quote);
-    } catch (err) {
-      setText(fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)]);
-    }
+    } catch (err) { setText(fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)]); }
     setIsLoading(false);
   };
 
-  // --- AUDIO PLAYER ---
   const playAudio = (speed = 1.0) => {
     if (!text) return;
     window.speechSynthesis.cancel(); 
-    
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = accent;
-    utterance.rate = speed; 
+    utterance.lang = accent; utterance.rate = speed; 
     
     const voices = window.speechSynthesis.getVoices();
     const specificVoice = voices.find(voice => voice.lang === accent || voice.lang === accent.replace('-', '_'));
-    
-    if (specificVoice) {
-      utterance.voice = specificVoice;
-    }
-
+    if (specificVoice) { utterance.voice = specificVoice; }
     window.speechSynthesis.speak(utterance);
   };
 
-  // --- RECORDING & GRADING LOGIC (Fixed 0% Bug) ---
+  // --- THE NEW NATURAL GRADING ENGINE ---
   const startPractice = () => {
     const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
-    
-    if (!Speech) {
-      alert("⚠️ Microfone não suportado.\n\n📱 iPhone: Abra este site no SAFARI.\n🤖 Android/PC: Use o CHROME.");
-      return;
-    }
+    if (!Speech) { alert("⚠️ Microfone não suportado.\n\n📱 iPhone: Use o SAFARI.\n🤖 Android/PC: Use o CHROME."); return; }
     
     const rec = new Speech();
     rec.lang = accent;
     rec.interimResults = false;
     
     setActiveRec(rec); 
-    
     rec.onstart = () => { setIsRecording(true); setFeedback(null); };
     rec.onend = () => { setIsRecording(false); setActiveRec(null); };
-
     rec.onerror = (event) => {
-      setIsRecording(false);
-      setActiveRec(null);
-      if (event.error === 'no-speech') {
-        alert("⚠️ Não ouvi nada. Tente falar mais perto do microfone.");
-      } else if (event.error === 'network') {
-        alert("⚠️ Erro de conexão com a Apple/Google. Verifique sua internet.");
-      } else if (event.error !== 'aborted') {
-        console.error("Erro no microfone:", event.error);
-      }
+      setIsRecording(false); setActiveRec(null);
+      if (event.error === 'no-speech') { alert("⚠️ Não ouvi nada. Tente falar mais perto do microfone."); } 
+      else if (event.error !== 'aborted') { console.error("Erro no microfone:", event.error); }
     };
 
     rec.onresult = async (e) => {
@@ -162,44 +126,59 @@ export default function QuevedoVIP() {
       const heardText = transcript.toLowerCase();
       const targetText = text.toLowerCase();
 
-      const cleanHeard = heardText.replace(/[.,?!'"-]/g, '');
-      const cleanTarget = targetText.replace(/[.,?!'"-]/g, '');
+      // 1. Aggressively clean the strings (removes ALL punctuation, even apostrophes)
+      const cleanHeard = heardText.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+      const cleanTarget = targetText.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
       
-      const targetWords = cleanTarget.split(' ').filter(w => w);
-      const heardWords = cleanHeard.split(' ').filter(w => w);
+      let accuracy = 0;
 
-      let matchCount = 0;
-      let heardPool = [...heardWords]; 
-      
-      targetWords.forEach(word => { 
-        const index = heardPool.indexOf(word);
-        if (index !== -1) {
-          matchCount++;
-          heardPool.splice(index, 1); 
+      // 2. Instant 100% if the cleaned strings match perfectly
+      if (cleanHeard === cleanTarget) {
+        accuracy = 100;
+      } else {
+        const targetWords = cleanTarget.split(' ').filter(w => w);
+        const heardWords = cleanHeard.split(' ').filter(w => w);
+
+        let matchCount = 0;
+        let heardPool = [...heardWords]; 
+        
+        targetWords.forEach(tWord => { 
+          const index = heardPool.findIndex(hWord => {
+            // 3. Substring Matching: Allows for "where" vs "wheres", or "challenge" vs "challenged"
+            return hWord === tWord || 
+                   (hWord.length >= 4 && tWord.includes(hWord)) || 
+                   (tWord.length >= 4 && hWord.includes(tWord));
+          });
+          if (index !== -1) {
+            matchCount++;
+            heardPool.splice(index, 1); 
+          }
+        });
+
+        let baseAccuracy = 0;
+        if (targetWords.length > 0) {
+          baseAccuracy = (matchCount / targetWords.length) * 100;
         }
-      });
 
-      let baseAccuracy = 0;
-      if (targetWords.length > 0) {
-        baseAccuracy = (matchCount / targetWords.length) * 100;
+        // 4. Lighter Babble Penalty (Only penalize 2% per extra word)
+        if (heardPool.length > 0 && targetWords.length > 1) {
+          baseAccuracy -= (heardPool.length * 2); 
+        }
+
+        accuracy = Math.round(baseAccuracy);
+
+        // 5. The Native Boost: If you scored over 80%, assume the rest was natural slang/speed and boost it.
+        if (accuracy >= 80 && accuracy < 100) accuracy += 10;
+        if (accuracy >= 60 && accuracy < 80) accuracy += 5;
       }
-
-      // Babble Penalty (-5% per extra word)
-      if (heardWords.length > targetWords.length) {
-        const extraWords = heardWords.length - targetWords.length;
-        baseAccuracy -= (extraWords * 5); 
-      }
-
-      // Removed Apple's broken confidence multiplier!
-      let accuracy = Math.round(baseAccuracy);
 
       if (accuracy < 0) accuracy = 0;
       if (accuracy > 100) accuracy = 100;
 
-      let stars = accuracy >= 90 ? 3 : accuracy >= 70 ? 2 : accuracy >= 40 ? 1 : 0;
+      // Adjusted Star thresholds to be less punishing
+      let stars = accuracy >= 85 ? 3 : accuracy >= 50 ? 2 : accuracy >= 25 ? 1 : 0;
       
       setFeedback({ stars, score: accuracy, heard: transcript });
-      
       if (stars === 3) confetti({ colors: ['#ff6a00', '#1a2a6c'] });
 
       const newXP = stats.xp + (stars * 10);
@@ -208,17 +187,13 @@ export default function QuevedoVIP() {
       await supabase.from('user_stats').update({ daily_count: newCount, total_xp: newXP }).eq('email', user);
       setStats(prev => ({ ...prev, count: newCount, xp: newXP }));
     };
-    
     rec.start();
   };
 
   const handleMicClick = () => {
     if (isRecording) {
-      if (activeRec) {
-        try { activeRec.stop(); } catch(e) { console.error(e); }
-      }
-      setIsRecording(false);
-      setActiveRec(null);
+      if (activeRec) { try { activeRec.stop(); } catch(e) { console.error(e); } }
+      setIsRecording(false); setActiveRec(null);
     } else {
       startPractice(); 
     }
