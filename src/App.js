@@ -167,7 +167,7 @@ export default function QuevedoVIP() {
       <main style={{ background: '#f8fafc', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif' }}>
         <div style={{ background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', textAlign: 'center', maxWidth: '400px', width: '90%' }}>
            <div style={{ background: 'linear-gradient(135deg, #1a2a6c, #ff6a00)', color: 'white', width: '60px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '16px', margin: '0 auto 20px', fontWeight: '900', fontSize: '28px' }}>Q</div>
-           <h2 style={{ color: '#0f172a', marginBottom: '8px' }}>VIP Portal</h2>
+           <h2 style={{ color: '#0f172a', marginBottom: '8px' }}>Sotaq by Idiomas Quevedo</h2>
            <form onSubmit={handleLogin}>
              <input type="email" placeholder="Seu E-mail VIP" value={email} onChange={e => setEmail(e.target.value)} style={{ width: '100%', padding: '16px', marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '16px' }} required />
              {loginError && <p style={{ color: '#ef4444', marginBottom: '15px', fontSize: '0.9rem' }}>{loginError}</p>}
@@ -200,7 +200,7 @@ export default function QuevedoVIP() {
 
       <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'white', padding: '15px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h3 style={{ color: '#1a2a6c', margin: 0, fontSize: '1.1rem', fontWeight: '800' }}>Idiomas Quevedo</h3>
+          <h3 style={{ color: '#1a2a6c', margin: 0, fontSize: '1.1rem', fontWeight: '800' }}>Sotaq by Idiomas Queved</h3>
           <div style={{ display: 'flex', gap: '15px' }}>
             <button onClick={() => setIsModalOpen(true)} style={{ background: 'none', border: 'none', color: '#ff6a00', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>Regras</button>
             <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.8rem', cursor: 'pointer' }}>Sair</button>
