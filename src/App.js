@@ -183,17 +183,79 @@ export default function QuevedoVIP() {
   return (
     <main style={{ background: '#f8fafc', minHeight: '100vh', fontFamily: 'system-ui, sans-serif', paddingBottom: '40px' }}>
       
+{/* THE VIP HANDBOOK - POLISHED MODAL */}
       {isModalOpen && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', backdropFilter: 'blur(4px)' }}>
-          <div style={{ background: 'white', padding: '30px', borderRadius: '24px', maxWidth: '400px', width: '100%', position: 'relative' }}>
-            <button onClick={() => setIsModalOpen(false)} style={{ position: 'absolute', top: '15px', right: '15px', border: 'none', background: '#f1f5f9', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer' }}>✖</button>
-            <h3 style={{ marginTop: 0 }}>Regras do Treino</h3>
-            <ul style={{ paddingLeft: '20px', color: '#475569', lineHeight: '1.6', fontSize: '0.95rem' }}>
-              <li><strong>Strict Mode:</strong> A pronúncia deve ser exata. Butchering a palavra reduz sua nota drasticamente.</li>
-              <li><strong>Energia:</strong> Você tem 12 tentativas diárias.</li>
-              <li><strong>Níveis:</strong> Ganhe 3 estrelas para ganhar o máximo de XP e desbloquear a próxima frase.</li>
-            </ul>
-            <button onClick={() => setIsModalOpen(false)} style={{ width: '100%', background: '#ff6a00', color: 'white', padding: '16px', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', border: 'none' }}>Entendi!</button>
+        <div style={{ 
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', 
+          background: 'rgba(15, 23, 42, 0.7)', display: 'flex', alignItems: 'center', 
+          justifyContent: 'center', zIndex: 1000, padding: '20px', 
+          backdropFilter: 'blur(8px)', boxSizing: 'border-box' 
+        }}>
+          <div style={{ 
+            background: 'white', padding: '32px', borderRadius: '28px', 
+            maxWidth: '420px', width: '100%', position: 'relative', 
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            border: '1px solid #e2e8f0'
+          }}>
+            <button onClick={() => setIsModalOpen(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: '#f1f5f9', border: 'none', width: '36px', height: '36px', borderRadius: '50%', fontSize: '16px', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+            
+            <h2 style={{ color: '#0f172a', marginTop: 0, fontSize: '1.5rem', fontWeight: '900', letterSpacing: '-0.5px' }}>
+              Manual do Aluno VIP 🎓
+            </h2>
+            
+            <div style={{ textAlign: 'left', marginTop: '20px' }}>
+              <div style={{ display: 'flex', gap: '15px', marginBottom: '18px' }}>
+                <span style={{ fontSize: '1.5rem' }}>🎲</span>
+                <div>
+                  <p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.95rem' }}>1. Gere o Desafio</p>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Use os dados para carregar frases reais ou palavras difíceis.</p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '15px', marginBottom: '18px' }}>
+                <span style={{ fontSize: '1.5rem' }}>🔊</span>
+                <div>
+                  <p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.95rem' }}>2. Ouça e Aprenda</p>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Escute a pronúncia (Normal ou Tartaruga) antes de tentar.</p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '15px', marginBottom: '18px' }}>
+                <span style={{ fontSize: '1.5rem' }}>🎤</span>
+                <div>
+                  <p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.95rem' }}>3. Pratique com Rigor</p>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Toque para gravar e **toque novamente para parar**. O sistema avalia sua precisão fonética.</p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '15px', marginBottom: '18px' }}>
+                <span style={{ fontSize: '1.5rem' }}>🏆</span>
+                <div>
+                  <p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.95rem' }}>4. XP e Evolução</p>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Ganhe até 30 XP. Acertos perfeitos (3★) **bloqueiam** a frase para você não repetir o que já domina.</p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '15px', marginBottom: '5px' }}>
+                <span style={{ fontSize: '1.5rem' }}>⚡</span>
+                <div>
+                  <p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.95rem' }}>5. Limite de Energia</p>
+                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Você tem 12 treinos diários. Foco total em cada tentativa!</p>
+                </div>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => setIsModalOpen(false)} 
+              style={{ 
+                width: '100%', background: 'linear-gradient(135deg, #1a2a6c, #ff6a00)', 
+                color: 'white', border: 'none', padding: '18px', borderRadius: '16px', 
+                fontWeight: '900', marginTop: '25px', cursor: 'pointer', fontSize: '1rem',
+                boxShadow: '0 10px 15px -3px rgba(255, 106, 0, 0.3)' 
+              }}
+            >
+              ESTOU PRONTO
+            </button>
           </div>
         </div>
       )}
