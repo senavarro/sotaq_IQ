@@ -2,23 +2,13 @@ import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
 import confetti from 'canvas-confetti';
 
-// --- THE NEW PHRASE LIBRARY ---
-const practicePhrases = [
-  "Where is the nearest subway station?",
-  "I would like to order a large coffee, please.",
-  "How much does this cost?",
-  "Could you repeat that a little slower?",
-  "The weather is absolutely beautiful today.",
-  "Can we get the check, please?",
-  "What time is our flight departing?",
-  "It was really nice meeting you.",
-  "Do you have any recommendations for dinner?",
-  "I need to book a hotel room for two nights.",
-  "Excuse me, do you speak English?",
-  "I'm looking for a pharmacy.",
-  "Can you help me with my luggage?",
-  "This meal is absolutely delicious!",
-  "I will see you tomorrow morning."
+// --- FALLBACK LIBRARIES (In case the live internet APIs fail) ---
+const fallbackWords = ["Beautiful", "Development", "Opportunity", "Technology", "Language", "Vocabulary", "Pronunciation", "Experience", "Knowledge", "Challenge"];
+const fallbackPhrases = [
+  "Where is the nearest subway station?", "I would like to order a large coffee, please.",
+  "The weather is absolutely beautiful today.", "Can we get the check, please?",
+  "It was really nice meeting you.", "Do you have any recommendations for dinner?",
+  "Excuse me, do you speak English?", "This meal is absolutely delicious!"
 ];
 
 export default function QuevedoVIP() {
@@ -30,6 +20,10 @@ export default function QuevedoVIP() {
   const [accent, setAccent] = useState('en-US');
   const [isRecording, setIsRecording] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // --- MODAL STATE ---
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // --- LOGIN LOGIC ---
   const handleLogin = async (e) => {
@@ -37,11 +31,7 @@ export default function QuevedoVIP() {
     setError('');
     const mail = email.toLowerCase().trim();
 
-    const { data: whitelist } = await supabase
-      .from('allowed_users')
-      .select('email')
-      .eq('email', mail)
-      .single();
+    const { data: whitelist } = await supabase.from('allowed_users').select('email').eq('email', mail).single();
 
     if (!whitelist) {
       setError('Acesso Negado. E-mail não encontrado na lista VIP.');
@@ -52,10 +42,7 @@ export default function QuevedoVIP() {
     
     const today = new Date().toISOString().split('T')[0];
     if (uStats && uStats.last_played_date !== today) {
-      const { data: updated } = await supabase
-        .from('user_stats')
-        .update({ daily_count: 5, last_played_date: today })
-        .eq('email', mail).select().single();
+      const { data: updated } = await supabase.from('user_stats').update({ daily_count: 5, last_played_date: today }).eq('email', mail).select().single();
       uStats = updated;
     }
 
@@ -63,14 +50,38 @@ export default function QuevedoVIP() {
     setUser(mail);
   };
 
-  // --- NEW RANDOM PHRASE GENERATOR ---
-  const loadRandomPhrase = () => {
-    const random = practicePhrases[Math.floor(Math.random() * practicePhrases.length)];
-    setText(random);
-    setFeedback(null); // Clear old scores
+  // --- LIVE API GENERATORS (INFINITE WORDS/PHRASES) ---
+  const loadRandomWord = async () => {
+    setIsLoading(true);
+    setFeedback(null);
+    try {
+      // Fetches a random word from the English dictionary API
+      const response = await fetch('https://random-word-api.herokuapp.com/word');
+      const data = await response.json();
+      setText(data[0].charAt(0).toUpperCase() + data[0].slice(1)); // Capitalize first letter
+    } catch (err) {
+      // If internet fails, use local backup
+      setText(fallbackWords[Math.floor(Math.random() * fallbackWords.length)]);
+    }
+    setIsLoading(false);
   };
 
-  // --- UPGRADED PRACTICE LOGIC ---
+  const loadRandomPhrase = async () => {
+    setIsLoading(true);
+    setFeedback(null);
+    try {
+      // Fetches a random quote/sentence from an open API
+      const response = await fetch('https://dummyjson.com/quotes/random');
+      const data = await response.json();
+      setText(data.quote);
+    } catch (err) {
+      // If internet fails, use local backup
+      setText(fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)]);
+    }
+    setIsLoading(false);
+  };
+
+  // --- RECORDING & GRADING LOGIC ---
   const startPractice = () => {
     const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
     
@@ -81,43 +92,32 @@ export default function QuevedoVIP() {
     
     const rec = new Speech();
     rec.lang = accent;
-    rec.interimResults = false; // Only wait for the final sentence
+    rec.interimResults = false;
     
-    // UX: Show user we are actively listening
-    rec.onstart = () => {
-      setIsRecording(true);
-      setFeedback(null);
-    };
-
-    // UX: Automatically turn off when they pause
+    rec.onstart = () => { setIsRecording(true); setFeedback(null); };
     rec.onend = () => setIsRecording(false);
 
     rec.onresult = async (e) => {
       const heardText = e.results[0][0].transcript.toLowerCase();
       const targetText = text.toLowerCase();
 
-      // NEW GRADING ALGORITHM: Compare what was said vs what was typed
-      const cleanHeard = heardText.replace(/[.,?!]/g, '');
-      const cleanTarget = targetText.replace(/[.,?!]/g, '');
+      const cleanHeard = heardText.replace(/[.,?!'"-]/g, '');
+      const cleanTarget = targetText.replace(/[.,?!'"-]/g, '');
       
       const targetWords = cleanTarget.split(' ').filter(w => w);
       const heardWords = cleanHeard.split(' ').filter(w => w);
 
       let matchCount = 0;
-      targetWords.forEach(word => {
-        if (heardWords.includes(word)) matchCount++;
-      });
+      targetWords.forEach(word => { if (heardWords.includes(word)) matchCount++; });
 
-      // Calculate accuracy percentage based on correct words
       let accuracy = 0;
       if (targetWords.length > 0) {
         accuracy = Math.round((matchCount / targetWords.length) * 100);
       } else {
-        accuracy = Math.round(e.results[0][0].confidence * 100); // Fallback
+        accuracy = Math.round(e.results[0][0].confidence * 100);
       }
 
       let stars = accuracy >= 80 ? 3 : accuracy >= 50 ? 2 : 1;
-      
       setFeedback({ stars, score: accuracy, heard: e.results[0][0].transcript });
       
       if (stars === 3) confetti({ colors: ['#ff6a00', '#1a2a6c'] });
@@ -125,17 +125,14 @@ export default function QuevedoVIP() {
       const newXP = stats.xp + (stars * 10);
       const newCount = stats.count - 1;
       
-      await supabase.from('user_stats').update({ 
-        daily_count: newCount, 
-        total_xp: newXP 
-      }).eq('email', user);
-
+      await supabase.from('user_stats').update({ daily_count: newCount, total_xp: newXP }).eq('email', user);
       setStats(prev => ({ ...prev, count: newCount, xp: newXP }));
     };
     
     rec.start();
   };
 
+  // --- UNAUTHENTICATED VIEW (LOGIN) ---
   if (!user) {
     return (
       <main style={{ background: '#f4f7f9', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
@@ -152,10 +149,35 @@ export default function QuevedoVIP() {
     );
   }
 
+  // --- AUTHENTICATED VIEW (DASHBOARD) ---
   return (
-    <main style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+    <main style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif', position: 'relative' }}>
+      
+      {/* INSTRUCTIONS MODAL (POP-UP) */}
+      {isModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', boxSizing: 'border-box' }}>
+          <div style={{ background: 'white', padding: '30px', borderRadius: '20px', maxWidth: '400px', width: '100%', position: 'relative', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+            <button onClick={() => setIsModalOpen(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#999' }}>✖</button>
+            <h3 style={{ color: '#1a2a6c', marginTop: 0 }}>Como Funciona?</h3>
+            <ol style={{ paddingLeft: '20px', color: '#444', lineHeight: '1.6' }}>
+              <li style={{ marginBottom: '10px' }}><strong>Gere uma frase ou palavra</strong> usando os botões azuis ou laranjas.</li>
+              <li style={{ marginBottom: '10px' }}>Escolha o sotaque que deseja praticar (Americano ou Britânico).</li>
+              <li style={{ marginBottom: '10px' }}>Aperte <strong>"Praticar Pronúncia"</strong>. O botão ficará vermelho.</li>
+              <li style={{ marginBottom: '10px' }}>Leia o texto em voz alta claramente. O microfone desliga sozinho quando você parar de falar.</li>
+              <li>Ganhe estrelas e XP baseado na sua precisão!</li>
+            </ol>
+            <button onClick={() => setIsModalOpen(false)} style={{ width: '100%', background: '#ff6a00', color: 'white', border: 'none', padding: '12px', borderRadius: '10px', fontWeight: 'bold', marginTop: '15px', cursor: 'pointer' }}>Entendi!</button>
+          </div>
+        </div>
+      )}
+
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '2px solid #eee', paddingBottom: '15px' }}>
-        <h3 style={{ color: '#1a2a6c', margin: 0 }}>Idiomas Quevedo</h3>
+        <div>
+          <h3 style={{ color: '#1a2a6c', margin: 0, marginBottom: '5px' }}>Idiomas Quevedo</h3>
+          <button onClick={() => setIsModalOpen(true)} style={{ background: '#f0f4f8', color: '#1a2a6c', border: '1px solid #cce0f5', padding: '5px 10px', borderRadius: '50px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
+            ❓ Como funciona?
+          </button>
+        </div>
         <div style={{ textAlign: 'right' }}>
            <p style={{ margin: 0, fontWeight: 'bold', color: '#1a2a6c' }}>XP: {stats.xp}</p>
            <p style={{ margin: 0, color: '#ff6a00', fontWeight: 'bold' }}>Energia: {stats.count}/5</p>
@@ -164,17 +186,23 @@ export default function QuevedoVIP() {
 
       <div style={{ background: 'white', padding: '25px', borderRadius: '20px', boxShadow: '0 8px 20px rgba(0,0,0,0.08)' }}>
         
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
           <label style={{ fontWeight: 'bold', color: '#555' }}>O que vamos praticar?</label>
-          <button onClick={loadRandomPhrase} style={{ background: 'none', border: 'none', color: '#ff6a00', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
-            🎲 Frase Aleatória
-          </button>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={loadRandomWord} disabled={isLoading || isRecording} style={{ background: '#e0f2fe', border: 'none', color: '#0284c7', padding: '8px 15px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+              🎲 Palavra
+            </button>
+            <button onClick={loadRandomPhrase} disabled={isLoading || isRecording} style={{ background: '#ffedd5', border: 'none', color: '#ea580c', padding: '8px 15px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+              🎲 Frase
+            </button>
+          </div>
         </div>
 
         <textarea 
-          placeholder="Escreva uma frase em inglês ou clique em Frase Aleatória..." 
-          value={text} 
+          placeholder="Escreva algo em inglês ou use os botões acima..." 
+          value={isLoading ? "Buscando no dicionário..." : text} 
           onChange={e => setText(e.target.value)}
+          disabled={isLoading || isRecording}
           style={{ width: '100%', height: '100px', padding: '15px', borderRadius: '12px', border: '2px solid #eee', marginBottom: '20px', boxSizing: 'border-box', fontSize: '16px', resize: 'vertical' }}
         />
         
@@ -183,20 +211,14 @@ export default function QuevedoVIP() {
           <button onClick={() => setAccent('en-GB')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: accent === 'en-GB' ? '2px solid #1a2a6c' : '2px solid #eee', background: accent === 'en-GB' ? '#f0f4f8' : 'white', fontWeight: 'bold', cursor: 'pointer' }}>🇬🇧 Britânico</button>
         </div>
 
-        {/* UPGRADED UX BUTTON */}
         <button 
           onClick={startPractice} 
-          disabled={stats.count <= 0 || isRecording || !text.trim()}
+          disabled={stats.count <= 0 || isRecording || !text.trim() || isLoading}
           style={{ 
-            width: '100%', 
-            padding: '18px', 
-            borderRadius: '50px', 
-            border: 'none', 
-            background: isRecording ? '#ff3333' : (stats.count <= 0 || !text.trim() ? '#ccc' : '#1a2a6c'), 
-            color: 'white', 
-            fontWeight: 'bold', 
-            fontSize: '16px',
-            cursor: (stats.count <= 0 || isRecording || !text.trim()) ? 'not-allowed' : 'pointer',
+            width: '100%', padding: '18px', borderRadius: '50px', border: 'none', 
+            background: isRecording ? '#ff3333' : (stats.count <= 0 || !text.trim() || isLoading ? '#ccc' : '#1a2a6c'), 
+            color: 'white', fontWeight: 'bold', fontSize: '16px',
+            cursor: (stats.count <= 0 || isRecording || !text.trim() || isLoading) ? 'not-allowed' : 'pointer',
             transition: 'background 0.3s ease',
             boxShadow: isRecording ? '0 0 15px rgba(255, 51, 51, 0.5)' : 'none'
           }}
@@ -204,7 +226,6 @@ export default function QuevedoVIP() {
           {isRecording ? '🔴 Ouvindo... Fale agora' : '🎤 PRATICAR PRONÚNCIA'}
         </button>
 
-        {/* UPGRADED FEEDBACK DISPLAY */}
         {feedback && (
           <div style={{ marginTop: '25px', textAlign: 'center', padding: '15px', background: '#f9f9f9', borderRadius: '12px' }}>
             <div style={{ fontSize: '2.5rem', color: '#ff6a00', letterSpacing: '5px' }}>{'★'.repeat(feedback.stars)}</div>
