@@ -299,7 +299,7 @@ export default function QuevedoVIP() {
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-           <div style={{ background: '#fff7ed', padding: '8px 12px', borderRadius: '12px', border: '1px solid #ffedd5' }}>
+           <div style={{ background: '#1a2a6c', padding: '8px 12px', borderRadius: '12px', border: '1px solid #ffedd5' }}>
             <p style={{ margin: 0, color: '#ff6a00', fontWeight: '900', fontSize: '0.9rem' }}>
               ⚡ {stats.count} / 12
             </p>
