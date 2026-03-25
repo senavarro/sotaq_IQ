@@ -19,6 +19,7 @@ export default function QuevedoVIP() {
   const [text, setText] = useState('');
   const [accent, setAccent] = useState('en-US');
   const [isRecording, setIsRecording] = useState(false);
+  const [activeRec, setActiveRec] = useState(null);
   const [feedback, setFeedback] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -105,7 +106,7 @@ export default function QuevedoVIP() {
     setIsLoading(false);
   };
 
-  // --- AUDIO PLAYER (WITH ACCENT FIX) ---
+  // --- AUDIO PLAYER ---
   const playAudio = (speed = 1.0) => {
     if (!text) return;
     window.speechSynthesis.cancel(); 
@@ -114,7 +115,6 @@ export default function QuevedoVIP() {
     utterance.lang = accent;
     utterance.rate = speed; 
     
-    // Force the browser to find the specific US or UK voice
     const voices = window.speechSynthesis.getVoices();
     const specificVoice = voices.find(voice => voice.lang === accent || voice.lang === accent.replace('-', '_'));
     
@@ -138,16 +138,19 @@ export default function QuevedoVIP() {
     rec.lang = accent;
     rec.interimResults = false;
     
+    setActiveRec(rec); 
+    
     rec.onstart = () => { setIsRecording(true); setFeedback(null); };
-    rec.onend = () => setIsRecording(false);
+    rec.onend = () => { setIsRecording(false); setActiveRec(null); };
 
     rec.onerror = (event) => {
-      setIsRecording(false); 
+      setIsRecording(false);
+      setActiveRec(null);
       if (event.error === 'no-speech') {
-        alert("⚠️ Não ouvi nada. Tente falar um pouco mais alto ou verifique o microfone.");
+        alert("⚠️ Não ouvi nada. Tente falar mais perto do microfone.");
       } else if (event.error === 'network') {
-        alert("⚠️ Erro de conexão. Verifique sua internet.");
-      } else {
+        alert("⚠️ Erro de conexão com a Apple/Google. Verifique sua internet.");
+      } else if (event.error !== 'aborted') {
         console.error("Erro no microfone:", event.error);
       }
     };
@@ -209,6 +212,18 @@ export default function QuevedoVIP() {
     rec.start();
   };
 
+  const handleMicClick = () => {
+    if (isRecording) {
+      if (activeRec) {
+        try { activeRec.stop(); } catch(e) { console.error(e); }
+      }
+      setIsRecording(false);
+      setActiveRec(null);
+    } else {
+      startPractice(); 
+    }
+  };
+
   // --- UNAUTHENTICATED VIEW ---
   if (!user) {
     return (
@@ -238,8 +253,9 @@ export default function QuevedoVIP() {
             <ol style={{ paddingLeft: '20px', color: '#444', lineHeight: '1.6' }}>
               <li style={{ marginBottom: '10px' }}><strong>Gere uma frase ou palavra</strong> usando os botões no topo.</li>
               <li style={{ marginBottom: '10px' }}>Aperte <strong>Ouvir</strong> para escutar a pronúncia correta.</li>
-              <li style={{ marginBottom: '10px' }}>Escolha o sotaque que deseja praticar (Americano ou Britânico).</li>
-              <li style={{ marginBottom: '10px' }}>Aperte <strong>"Praticar Pronúncia"</strong> e leia o texto em voz alta.</li>
+              <li style={{ marginBottom: '10px' }}>Escolha o sotaque que deseja praticar.</li>
+              <li style={{ marginBottom: '10px' }}>Aperte <strong>"Praticar Pronúncia"</strong>.</li>
+              <li style={{ marginBottom: '10px' }}>Quando terminar de falar, <strong>aperte o botão novamente para parar</strong>.</li>
               <li>Ganhe estrelas e XP baseado na sua precisão!</li>
             </ol>
             <button onClick={() => setIsModalOpen(false)} style={{ width: '100%', background: '#ff6a00', color: 'white', border: 'none', padding: '12px', borderRadius: '10px', fontWeight: 'bold', marginTop: '15px', cursor: 'pointer' }}>Entendi!</button>
@@ -287,7 +303,6 @@ export default function QuevedoVIP() {
           style={{ width: '100%', height: '100px', padding: '15px', borderRadius: '12px', border: '2px solid #eee', marginBottom: '15px', boxSizing: 'border-box', fontSize: '16px', resize: 'vertical' }}
         />
 
-        {/* --- NEW EXTERNAL AUDIO BUTTONS --- */}
         {text && !isLoading && (
           <div style={{ display: 'flex', gap: '10px', marginBottom: '25px' }}>
             <button onClick={() => playAudio(1.0)} style={{ flex: 1, padding: '12px', borderRadius: '10px', background: '#f0f4f8', border: '1px solid #cce0f5', color: '#1a2a6c', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
@@ -305,18 +320,18 @@ export default function QuevedoVIP() {
         </div>
 
         <button 
-          onClick={startPractice} 
-          disabled={stats.count <= 0 || isRecording || !text.trim() || isLoading}
+          onClick={handleMicClick} 
+          disabled={stats.count <= 0 || (!isRecording && (!text.trim() || isLoading))}
           style={{ 
             width: '100%', padding: '18px', borderRadius: '50px', border: 'none', 
             background: isRecording ? '#ff3333' : (stats.count <= 0 || !text.trim() || isLoading ? '#ccc' : '#1a2a6c'), 
             color: 'white', fontWeight: 'bold', fontSize: '16px',
-            cursor: (stats.count <= 0 || isRecording || !text.trim() || isLoading) ? 'not-allowed' : 'pointer',
+            cursor: (stats.count <= 0 || (!isRecording && (!text.trim() || isLoading))) ? 'not-allowed' : 'pointer',
             transition: 'background 0.3s ease',
             boxShadow: isRecording ? '0 0 15px rgba(255, 51, 51, 0.5)' : 'none'
           }}
         >
-          {isRecording ? '🔴 Ouvindo... Fale agora' : '🎤 PRATICAR PRONÚNCIA'}
+          {isRecording ? '🔴 Ouvindo... CLIQUE PARA PARAR' : '🎤 PRATICAR PRONÚNCIA'}
         </button>
 
         {feedback && (
