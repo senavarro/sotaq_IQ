@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from './supabaseClient';
 import confetti from 'canvas-confetti';
 
-// --- FALLBACK LIBRARIES (In case the live internet APIs fail) ---
+// --- FALLBACK LIBRARIES (In case the live APIs fail) ---
 const fallbackWords = ["Beautiful", "Development", "Opportunity", "Technology", "Language", "Vocabulary", "Pronunciation", "Experience", "Knowledge", "Challenge"];
 const fallbackPhrases = [
   "Where is the nearest subway station?", "I would like to order a large coffee, please.",
@@ -21,8 +21,6 @@ export default function QuevedoVIP() {
   const [isRecording, setIsRecording] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  
-  // --- MODAL STATE ---
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // --- LOGIN LOGIC ---
@@ -50,17 +48,15 @@ export default function QuevedoVIP() {
     setUser(mail);
   };
 
-  // --- LIVE API GENERATORS (INFINITE WORDS/PHRASES) ---
+  // --- LIVE API GENERATORS ---
   const loadRandomWord = async () => {
     setIsLoading(true);
     setFeedback(null);
     try {
-      // Fetches a random word from the English dictionary API
       const response = await fetch('https://random-word-api.herokuapp.com/word');
       const data = await response.json();
-      setText(data[0].charAt(0).toUpperCase() + data[0].slice(1)); // Capitalize first letter
+      setText(data[0].charAt(0).toUpperCase() + data[0].slice(1)); 
     } catch (err) {
-      // If internet fails, use local backup
       setText(fallbackWords[Math.floor(Math.random() * fallbackWords.length)]);
     }
     setIsLoading(false);
@@ -70,18 +66,26 @@ export default function QuevedoVIP() {
     setIsLoading(true);
     setFeedback(null);
     try {
-      // Fetches a random quote/sentence from an open API
       const response = await fetch('https://dummyjson.com/quotes/random');
       const data = await response.json();
       setText(data.quote);
     } catch (err) {
-      // If internet fails, use local backup
       setText(fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)]);
     }
     setIsLoading(false);
   };
 
-  // --- RECORDING & GRADING LOGIC ---
+  // --- 🔊 TEXT-TO-SPEECH (NORMAL & SLOW MODE) ---
+  const playAudio = (speed = 1.0) => {
+    if (!text) return;
+    window.speechSynthesis.cancel(); // Stop any currently playing audio
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = accent;
+    utterance.rate = speed; // 1.0 is normal, 0.5 is slow
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // --- STRICT RECORDING & GRADING LOGIC ---
   const startPractice = () => {
     const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
     
@@ -98,7 +102,10 @@ export default function QuevedoVIP() {
     rec.onend = () => setIsRecording(false);
 
     rec.onresult = async (e) => {
-      const heardText = e.results[0][0].transcript.toLowerCase();
+      const transcript = e.results[0][0].transcript;
+      const confidence = e.results[0][0].confidence; // AI Acoustic score (0.0 - 1.0)
+      
+      const heardText = transcript.toLowerCase();
       const targetText = text.toLowerCase();
 
       const cleanHeard = heardText.replace(/[.,?!'"-]/g, '');
@@ -107,18 +114,41 @@ export default function QuevedoVIP() {
       const targetWords = cleanTarget.split(' ').filter(w => w);
       const heardWords = cleanHeard.split(' ').filter(w => w);
 
+      // 1. Strict Word Match (No duplicates allowed)
       let matchCount = 0;
-      targetWords.forEach(word => { if (heardWords.includes(word)) matchCount++; });
+      let heardPool = [...heardWords]; 
+      
+      targetWords.forEach(word => { 
+        const index = heardPool.indexOf(word);
+        if (index !== -1) {
+          matchCount++;
+          heardPool.splice(index, 1); 
+        }
+      });
 
-      let accuracy = 0;
+      let baseAccuracy = 0;
       if (targetWords.length > 0) {
-        accuracy = Math.round((matchCount / targetWords.length) * 100);
+        baseAccuracy = (matchCount / targetWords.length) * 100;
       } else {
-        accuracy = Math.round(e.results[0][0].confidence * 100);
+        baseAccuracy = confidence * 100;
       }
 
-      let stars = accuracy >= 80 ? 3 : accuracy >= 50 ? 2 : 1;
-      setFeedback({ stars, score: accuracy, heard: e.results[0][0].transcript });
+      // 2. Babble Penalty (-5% per extra word)
+      if (heardWords.length > targetWords.length) {
+        const extraWords = heardWords.length - targetWords.length;
+        baseAccuracy -= (extraWords * 5); 
+      }
+
+      // 3. The Mumble Multiplier
+      let accuracy = Math.round(baseAccuracy * confidence);
+
+      if (accuracy < 0) accuracy = 0;
+      if (accuracy > 100) accuracy = 100;
+
+      // 4. Stricter Star Tiers
+      let stars = accuracy >= 90 ? 3 : accuracy >= 70 ? 2 : accuracy >= 40 ? 1 : 0;
+      
+      setFeedback({ stars, score: accuracy, heard: transcript });
       
       if (stars === 3) confetti({ colors: ['#ff6a00', '#1a2a6c'] });
 
@@ -161,6 +191,7 @@ export default function QuevedoVIP() {
             <h3 style={{ color: '#1a2a6c', marginTop: 0 }}>Como Funciona?</h3>
             <ol style={{ paddingLeft: '20px', color: '#444', lineHeight: '1.6' }}>
               <li style={{ marginBottom: '10px' }}><strong>Gere uma frase ou palavra</strong> usando os botões azuis ou laranjas.</li>
+              <li style={{ marginBottom: '10px' }}>Aperte 🔊 para ouvir a pronúncia, ou 🐢 para ouvir devagar.</li>
               <li style={{ marginBottom: '10px' }}>Escolha o sotaque que deseja praticar (Americano ou Britânico).</li>
               <li style={{ marginBottom: '10px' }}>Aperte <strong>"Praticar Pronúncia"</strong>. O botão ficará vermelho.</li>
               <li style={{ marginBottom: '10px' }}>Leia o texto em voz alta claramente. O microfone desliga sozinho quando você parar de falar.</li>
@@ -198,13 +229,34 @@ export default function QuevedoVIP() {
           </div>
         </div>
 
-        <textarea 
-          placeholder="Escreva algo em inglês ou use os botões acima..." 
-          value={isLoading ? "Buscando no dicionário..." : text} 
-          onChange={e => setText(e.target.value)}
-          disabled={isLoading || isRecording}
-          style={{ width: '100%', height: '100px', padding: '15px', borderRadius: '12px', border: '2px solid #eee', marginBottom: '20px', boxSizing: 'border-box', fontSize: '16px', resize: 'vertical' }}
-        />
+        {/* --- THE TEXT BOX WITH NORMAL AND SLOW BUTTONS --- */}
+        <div style={{ position: 'relative', marginBottom: '20px' }}>
+          <textarea 
+            placeholder="Escreva algo em inglês ou use os botões acima..." 
+            value={isLoading ? "Buscando no dicionário..." : text} 
+            onChange={e => setText(e.target.value)}
+            disabled={isLoading || isRecording}
+            style={{ width: '100%', height: '100px', padding: '15px', paddingRight: '100px', borderRadius: '12px', border: '2px solid #eee', boxSizing: 'border-box', fontSize: '16px', resize: 'vertical' }}
+          />
+          {text && !isLoading && (
+            <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '8px' }}>
+              <button 
+                onClick={() => playAudio(0.5)} 
+                title="Ouvir devagar"
+                style={{ background: '#e6f7ff', border: '1px solid #bae0ff', borderRadius: '50%', width: '35px', height: '35px', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                🐢
+              </button>
+              <button 
+                onClick={() => playAudio(1.0)} 
+                title="Ouvir pronúncia"
+                style={{ background: '#f0f4f8', border: 'none', borderRadius: '50%', width: '35px', height: '35px', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}
+              >
+                🔊
+              </button>
+            </div>
+          )}
+        </div>
         
         <div style={{ display: 'flex', gap: '15px', marginBottom: '25px' }}>
           <button onClick={() => setAccent('en-US')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: accent === 'en-US' ? '2px solid #ff6a00' : '2px solid #eee', background: accent === 'en-US' ? '#fff5eb' : 'white', fontWeight: 'bold', cursor: 'pointer' }}>🇺🇸 Americano</button>
@@ -226,6 +278,7 @@ export default function QuevedoVIP() {
           {isRecording ? '🔴 Ouvindo... Fale agora' : '🎤 PRATICAR PRONÚNCIA'}
         </button>
 
+        {/* FEEDBACK DISPLAY */}
         {feedback && (
           <div style={{ marginTop: '25px', textAlign: 'center', padding: '15px', background: '#f9f9f9', borderRadius: '12px' }}>
             <div style={{ fontSize: '2.5rem', color: '#ff6a00', letterSpacing: '5px' }}>{'★'.repeat(feedback.stars)}</div>
