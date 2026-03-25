@@ -198,16 +198,45 @@ export default function QuevedoVIP() {
         </div>
       )}
 
-      <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'white', padding: '15px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h3 style={{ color: '#1a2a6c', margin: 0, fontSize: '1.1rem', fontWeight: '800' }}>Sotaq by Idiomas Queved</h3>
-          <div style={{ display: 'flex', gap: '15px' }}>
-            <button onClick={() => setIsModalOpen(true)} style={{ background: 'none', border: 'none', color: '#ff6a00', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>Regras</button>
-            <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.8rem', cursor: 'pointer' }}>Sair</button>
+{/* STICKY MOBILE HEADER - POLISHED */}
+      <header style={{ 
+        position: 'sticky', top: 0, zIndex: 50, background: 'white', 
+        padding: '12px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', 
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center' 
+      }}>
+        <div style={{ flex: 1 }}>
+          <h3 style={{ color: '#1a2a6c', margin: 0, fontSize: '1.05rem', fontWeight: '900', letterSpacing: '-0.5px' }}>
+            Idiomas Quevedo
+          </h3>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+            <button 
+              onClick={() => setIsModalOpen(true)} 
+              style={{ 
+                background: '#fff7ed', border: '1px solid #ffedd5', color: '#ff6a00', 
+                padding: '6px 12px', borderRadius: '50px', fontSize: '0.75rem', 
+                fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' 
+              }}
+            >
+              ❓ Regras
+            </button>
+            <button 
+              onClick={handleLogout} 
+              style={{ 
+                background: '#f8fafc', border: '1px solid #e2e8f0', color: '#94a3b8', 
+                padding: '6px 12px', borderRadius: '50px', fontSize: '0.75rem', 
+                fontWeight: '700', cursor: 'pointer' 
+              }}
+            >
+              Sair
+            </button>
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-           <p style={{ margin: 0, color: '#ff6a00', fontWeight: '900' }}>⚡ {stats.count} / 12</p>
+           <div style={{ background: '#fff7ed', padding: '8px 12px', borderRadius: '12px', border: '1px solid #ffedd5' }}>
+            <p style={{ margin: 0, color: '#ff6a00', fontWeight: '900', fontSize: '0.9rem' }}>
+              ⚡ {stats.count} / 12
+            </p>
+           </div>
         </div>
       </header>
 
