@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import confetti from 'canvas-confetti';
 
-// --- FALLBACK LIBRARIES (In case the live APIs fail) ---
 const fallbackWords = ["Beautiful", "Development", "Opportunity", "Technology", "Language", "Vocabulary", "Pronunciation", "Experience", "Knowledge", "Challenge"];
 const fallbackPhrases = [
   "Where is the nearest subway station?", "I would like to order a large coffee, please.",
@@ -23,7 +22,28 @@ export default function QuevedoVIP() {
   const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // --- LOGIN LOGIC ---
+  // --- AUTOMATIC SESSION RESTORE ---
+  useEffect(() => {
+    const savedEmail = localStorage.getItem('quevedo_vip_user');
+    if (savedEmail) {
+      restoreSession(savedEmail);
+    }
+  }, []);
+
+  const restoreSession = async (mail) => {
+    let { data: uStats } = await supabase.from('user_stats').select('*').eq('email', mail).single();
+    if (uStats) {
+      const today = new Date().toISOString().split('T')[0];
+      if (uStats.last_played_date !== today) {
+        const { data: updated } = await supabase.from('user_stats').update({ daily_count: 5, last_played_date: today }).eq('email', mail).select().single();
+        uStats = updated;
+      }
+      setStats({ count: uStats.daily_count, xp: uStats.total_xp });
+      setUser(mail);
+    }
+  };
+
+  // --- LOGIN & LOGOUT LOGIC ---
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
@@ -44,11 +64,20 @@ export default function QuevedoVIP() {
       uStats = updated;
     }
 
+    // Save to local storage for future visits
+    localStorage.setItem('quevedo_vip_user', mail);
     setStats({ count: uStats.daily_count, xp: uStats.total_xp });
     setUser(mail);
   };
 
-  // --- LIVE API GENERATORS ---
+  const handleLogout = () => {
+    localStorage.removeItem('quevedo_vip_user');
+    setUser(null);
+    setStats({ count: 5, xp: 0 });
+    setFeedback(null);
+    setText('');
+  };
+
   const loadRandomWord = async () => {
     setIsLoading(true);
     setFeedback(null);
@@ -75,17 +104,15 @@ export default function QuevedoVIP() {
     setIsLoading(false);
   };
 
-  // --- 🔊 TEXT-TO-SPEECH (NORMAL & SLOW MODE) ---
   const playAudio = (speed = 1.0) => {
     if (!text) return;
-    window.speechSynthesis.cancel(); // Stop any currently playing audio
+    window.speechSynthesis.cancel(); 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = accent;
-    utterance.rate = speed; // 1.0 is normal, 0.5 is slow
+    utterance.rate = speed; 
     window.speechSynthesis.speak(utterance);
   };
 
-  // --- STRICT RECORDING & GRADING LOGIC ---
   const startPractice = () => {
     const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
     
@@ -103,7 +130,7 @@ export default function QuevedoVIP() {
 
     rec.onresult = async (e) => {
       const transcript = e.results[0][0].transcript;
-      const confidence = e.results[0][0].confidence; // AI Acoustic score (0.0 - 1.0)
+      const confidence = e.results[0][0].confidence; 
       
       const heardText = transcript.toLowerCase();
       const targetText = text.toLowerCase();
@@ -114,7 +141,6 @@ export default function QuevedoVIP() {
       const targetWords = cleanTarget.split(' ').filter(w => w);
       const heardWords = cleanHeard.split(' ').filter(w => w);
 
-      // 1. Strict Word Match (No duplicates allowed)
       let matchCount = 0;
       let heardPool = [...heardWords]; 
       
@@ -133,19 +159,16 @@ export default function QuevedoVIP() {
         baseAccuracy = confidence * 100;
       }
 
-      // 2. Babble Penalty (-5% per extra word)
       if (heardWords.length > targetWords.length) {
         const extraWords = heardWords.length - targetWords.length;
         baseAccuracy -= (extraWords * 5); 
       }
 
-      // 3. The Mumble Multiplier
       let accuracy = Math.round(baseAccuracy * confidence);
 
       if (accuracy < 0) accuracy = 0;
       if (accuracy > 100) accuracy = 100;
 
-      // 4. Stricter Star Tiers
       let stars = accuracy >= 90 ? 3 : accuracy >= 70 ? 2 : accuracy >= 40 ? 1 : 0;
       
       setFeedback({ stars, score: accuracy, heard: transcript });
@@ -162,7 +185,6 @@ export default function QuevedoVIP() {
     rec.start();
   };
 
-  // --- UNAUTHENTICATED VIEW (LOGIN) ---
   if (!user) {
     return (
       <main style={{ background: '#f4f7f9', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
@@ -179,11 +201,9 @@ export default function QuevedoVIP() {
     );
   }
 
-  // --- AUTHENTICATED VIEW (DASHBOARD) ---
   return (
     <main style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif', position: 'relative' }}>
       
-      {/* INSTRUCTIONS MODAL (POP-UP) */}
       {isModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px', boxSizing: 'border-box' }}>
           <div style={{ background: 'white', padding: '30px', borderRadius: '20px', maxWidth: '400px', width: '100%', position: 'relative', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
@@ -205,9 +225,14 @@ export default function QuevedoVIP() {
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '2px solid #eee', paddingBottom: '15px' }}>
         <div>
           <h3 style={{ color: '#1a2a6c', margin: 0, marginBottom: '5px' }}>Idiomas Quevedo</h3>
-          <button onClick={() => setIsModalOpen(true)} style={{ background: '#f0f4f8', color: '#1a2a6c', border: '1px solid #cce0f5', padding: '5px 10px', borderRadius: '50px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
-            ❓ Como funciona?
-          </button>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={() => setIsModalOpen(true)} style={{ background: '#f0f4f8', color: '#1a2a6c', border: '1px solid #cce0f5', padding: '5px 10px', borderRadius: '50px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
+              ❓ Como funciona?
+            </button>
+            <button onClick={handleLogout} style={{ background: 'transparent', color: '#999', border: 'none', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}>
+              Sair
+            </button>
+          </div>
         </div>
         <div style={{ textAlign: 'right' }}>
            <p style={{ margin: 0, fontWeight: 'bold', color: '#1a2a6c' }}>XP: {stats.xp}</p>
@@ -229,7 +254,6 @@ export default function QuevedoVIP() {
           </div>
         </div>
 
-        {/* --- THE TEXT BOX WITH NORMAL AND SLOW BUTTONS --- */}
         <div style={{ position: 'relative', marginBottom: '20px' }}>
           <textarea 
             placeholder="Escreva algo em inglês ou use os botões acima..." 
@@ -240,20 +264,8 @@ export default function QuevedoVIP() {
           />
           {text && !isLoading && (
             <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '8px' }}>
-              <button 
-                onClick={() => playAudio(0.5)} 
-                title="Ouvir devagar"
-                style={{ background: '#e6f7ff', border: '1px solid #bae0ff', borderRadius: '50%', width: '35px', height: '35px', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                🐢
-              </button>
-              <button 
-                onClick={() => playAudio(1.0)} 
-                title="Ouvir pronúncia"
-                style={{ background: '#f0f4f8', border: 'none', borderRadius: '50%', width: '35px', height: '35px', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}
-              >
-                🔊
-              </button>
+              <button onClick={() => playAudio(0.5)} title="Ouvir devagar" style={{ background: '#e6f7ff', border: '1px solid #bae0ff', borderRadius: '50%', width: '35px', height: '35px', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🐢</button>
+              <button onClick={() => playAudio(1.0)} title="Ouvir pronúncia" style={{ background: '#f0f4f8', border: 'none', borderRadius: '50%', width: '35px', height: '35px', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>🔊</button>
             </div>
           )}
         </div>
@@ -278,7 +290,6 @@ export default function QuevedoVIP() {
           {isRecording ? '🔴 Ouvindo... Fale agora' : '🎤 PRATICAR PRONÚNCIA'}
         </button>
 
-        {/* FEEDBACK DISPLAY */}
         {feedback && (
           <div style={{ marginTop: '25px', textAlign: 'center', padding: '15px', background: '#f9f9f9', borderRadius: '12px' }}>
             <div style={{ fontSize: '2.5rem', color: '#ff6a00', letterSpacing: '5px' }}>{'★'.repeat(feedback.stars)}</div>
