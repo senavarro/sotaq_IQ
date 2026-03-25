@@ -12,6 +12,9 @@ export const curatedWords = [
   "Headache", "Cough", "Hiccup", "Enough", "Recipe", 
   "Clothes", "Month", "Jewelry", "Iron", "Choir", 
   "Epitome", "Hyperbole", "Mischievous", "Nausea", "Syllable",
+  "Thursday", "Mechanic", "Impatient", "Significant", "Impaired", 
+  "Velvet", "Rigurous", "Fascinating", "Simplistic", "Anchor", 
+  "Distinguished", "Impolite", "Kindness", "Collaborate",
 
   // Business & Work
   "Knowledge", "Challenge", "Successful", "Environment", "Strategy",
@@ -24,7 +27,8 @@ export const curatedWords = [
   "Requirement", "Responsibility", "Solution", "Supervisor", "Department", 
   "Interview", "Resume", "Employee", "Employer", "Salary", 
   "Promotion", "Deadline", "Objective", "Analysis", "Feedback",
-
+  "Compensation", "Recruitment", "Exposure", 
+  
   // Adjectives, Adverbs & Everyday Nouns
   "Interesting", "Beautiful", "Dangerous", "Congratulations", "Appreciate",
   "Unfortunately", "Especially", "Immediately", "Absolutely", "Definitely",
@@ -71,6 +75,9 @@ export const curatedPhrases = [
   "Could you explain that again?",
   "Have a great rest of your day!",
   "See you later, take care of yourself.",
+  "Cheers, have a good one!",
+  "Catch you in a bit", 
+  "How have you been?",
 
   // --- TRAVEL & DIRECTIONS ---
   "Excuse me, where is the nearest subway station?",
@@ -100,6 +107,7 @@ export const curatedPhrases = [
   "Can I bring this on the airplane?",
   "What gate does the flight leave from?",
   "The traffic is really bad today.",
+  "Our train has been cancelled",
 
   // --- RESTAURANT & FOOD ---
   "I would like to order a large coffee, please.",
@@ -187,6 +195,14 @@ export const curatedPhrases = [
 
   // --- HEALTH & EMERGENCIES ---
   "I am not feeling very well today.",
+  "I'm feeling a bit under the weather",
+  "I've caught a cold", 
+  "I'm feeling great",
+  "I'm feeling like a million dollars!", 
+  "Do you need help?",
+  "She needs to call the police",
+  "They are lost", 
+  "We need to have our car fixed", 
   "I have a terrible headache and a fever.",
   "I need to see a doctor as soon as possible.",
   "Can you call an ambulance, please?",
