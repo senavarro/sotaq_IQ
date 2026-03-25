@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import confetti from 'canvas-confetti';
 
+// --- FALLBACK LIBRARIES ---
 const fallbackWords = ["Beautiful", "Development", "Opportunity", "Technology", "Language", "Vocabulary", "Pronunciation", "Experience", "Knowledge", "Challenge"];
 const fallbackPhrases = [
   "Where is the nearest subway station?", "I would like to order a large coffee, please.",
@@ -77,6 +78,7 @@ export default function QuevedoVIP() {
     setText('');
   };
 
+  // --- API GENERATORS ---
   const loadRandomWord = async () => {
     setIsLoading(true);
     setFeedback(null);
@@ -103,13 +105,23 @@ export default function QuevedoVIP() {
     setIsLoading(false);
   };
 
-  // --- AUDIO PLAYER (NORMAL & SLOW) ---
+  // --- AUDIO PLAYER (WITH ACCENT FIX) ---
   const playAudio = (speed = 1.0) => {
     if (!text) return;
     window.speechSynthesis.cancel(); 
+    
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = accent;
     utterance.rate = speed; 
+    
+    // Force the browser to find the specific US or UK voice
+    const voices = window.speechSynthesis.getVoices();
+    const specificVoice = voices.find(voice => voice.lang === accent || voice.lang === accent.replace('-', '_'));
+    
+    if (specificVoice) {
+      utterance.voice = specificVoice;
+    }
+
     window.speechSynthesis.speak(utterance);
   };
 
@@ -224,10 +236,10 @@ export default function QuevedoVIP() {
             <button onClick={() => setIsModalOpen(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#999' }}>✖</button>
             <h3 style={{ color: '#1a2a6c', marginTop: 0 }}>Como Funciona?</h3>
             <ol style={{ paddingLeft: '20px', color: '#444', lineHeight: '1.6' }}>
-              <li style={{ marginBottom: '10px' }}><strong>Gere uma frase ou palavra</strong> usando os botões azuis ou laranjas.</li>
-              <li style={{ marginBottom: '10px' }}>Aperte 🔊 para ouvir a pronúncia, ou 🐢 para ouvir devagar.</li>
-              <li style={{ marginBottom: '10px' }}>Escolha o sotaque.</li>
-              <li style={{ marginBottom: '10px' }}>Aperte <strong>"Praticar Pronúncia"</strong>. Leia alto.</li>
+              <li style={{ marginBottom: '10px' }}><strong>Gere uma frase ou palavra</strong> usando os botões no topo.</li>
+              <li style={{ marginBottom: '10px' }}>Aperte <strong>Ouvir</strong> para escutar a pronúncia correta.</li>
+              <li style={{ marginBottom: '10px' }}>Escolha o sotaque que deseja praticar (Americano ou Britânico).</li>
+              <li style={{ marginBottom: '10px' }}>Aperte <strong>"Praticar Pronúncia"</strong> e leia o texto em voz alta.</li>
               <li>Ganhe estrelas e XP baseado na sua precisão!</li>
             </ol>
             <button onClick={() => setIsModalOpen(false)} style={{ width: '100%', background: '#ff6a00', color: 'white', border: 'none', padding: '12px', borderRadius: '10px', fontWeight: 'bold', marginTop: '15px', cursor: 'pointer' }}>Entendi!</button>
@@ -267,21 +279,25 @@ export default function QuevedoVIP() {
           </div>
         </div>
 
-        <div style={{ position: 'relative', marginBottom: '20px' }}>
-          <textarea 
-            placeholder="Escreva algo em inglês ou use os botões acima..." 
-            value={isLoading ? "Buscando no dicionário..." : text} 
-            onChange={e => setText(e.target.value)}
-            disabled={isLoading || isRecording}
-            style={{ width: '100%', height: '100px', padding: '15px', paddingRight: '100px', borderRadius: '12px', border: '2px solid #eee', boxSizing: 'border-box', fontSize: '16px', resize: 'vertical' }}
-          />
-          {text && !isLoading && (
-            <div style={{ position: 'absolute', top: '15px', right: '15px', display: 'flex', gap: '8px' }}>
-              <button onClick={() => playAudio(0.5)} title="Ouvir devagar" style={{ background: '#e6f7ff', border: '1px solid #bae0ff', borderRadius: '50%', width: '35px', height: '35px', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🐢</button>
-              <button onClick={() => playAudio(1.0)} title="Ouvir pronúncia" style={{ background: '#f0f4f8', border: 'none', borderRadius: '50%', width: '35px', height: '35px', fontSize: '1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}>🔊</button>
-            </div>
-          )}
-        </div>
+        <textarea 
+          placeholder="Escreva algo em inglês ou use os botões acima..." 
+          value={isLoading ? "Buscando no dicionário..." : text} 
+          onChange={e => setText(e.target.value)}
+          disabled={isLoading || isRecording}
+          style={{ width: '100%', height: '100px', padding: '15px', borderRadius: '12px', border: '2px solid #eee', marginBottom: '15px', boxSizing: 'border-box', fontSize: '16px', resize: 'vertical' }}
+        />
+
+        {/* --- NEW EXTERNAL AUDIO BUTTONS --- */}
+        {text && !isLoading && (
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '25px' }}>
+            <button onClick={() => playAudio(1.0)} style={{ flex: 1, padding: '12px', borderRadius: '10px', background: '#f0f4f8', border: '1px solid #cce0f5', color: '#1a2a6c', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              🔊 Ouvir Pronúncia
+            </button>
+            <button onClick={() => playAudio(0.5)} style={{ flex: 1, padding: '12px', borderRadius: '10px', background: '#e6f7ff', border: '1px solid #bae0ff', color: '#0284c7', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              🐢 Ouvir Devagar
+            </button>
+          </div>
+        )}
         
         <div style={{ display: 'flex', gap: '15px', marginBottom: '25px' }}>
           <button onClick={() => setAccent('en-US')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: accent === 'en-US' ? '2px solid #ff6a00' : '2px solid #eee', background: accent === 'en-US' ? '#fff5eb' : 'white', fontWeight: 'bold', cursor: 'pointer' }}>🇺🇸 Americano</button>
