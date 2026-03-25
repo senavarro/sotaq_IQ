@@ -64,7 +64,6 @@ export default function QuevedoVIP() {
       uStats = updated;
     }
 
-    // Save to local storage for future visits
     localStorage.setItem('quevedo_vip_user', mail);
     setStats({ count: uStats.daily_count, xp: uStats.total_xp });
     setUser(mail);
@@ -104,6 +103,7 @@ export default function QuevedoVIP() {
     setIsLoading(false);
   };
 
+  // --- AUDIO PLAYER (NORMAL & SLOW) ---
   const playAudio = (speed = 1.0) => {
     if (!text) return;
     window.speechSynthesis.cancel(); 
@@ -113,6 +113,7 @@ export default function QuevedoVIP() {
     window.speechSynthesis.speak(utterance);
   };
 
+  // --- RECORDING & GRADING LOGIC ---
   const startPractice = () => {
     const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
     
@@ -125,9 +126,11 @@ export default function QuevedoVIP() {
     rec.lang = accent;
     rec.interimResults = false;
     
-rec.onerror = (event) => {
-      setIsRecording(false); // Instantly turn off the red button
-      
+    rec.onstart = () => { setIsRecording(true); setFeedback(null); };
+    rec.onend = () => setIsRecording(false);
+
+    rec.onerror = (event) => {
+      setIsRecording(false); 
       if (event.error === 'no-speech') {
         alert("⚠️ Não ouvi nada. Tente falar um pouco mais alto ou verifique o microfone.");
       } else if (event.error === 'network') {
@@ -136,6 +139,7 @@ rec.onerror = (event) => {
         console.error("Erro no microfone:", event.error);
       }
     };
+
     rec.onresult = async (e) => {
       const transcript = e.results[0][0].transcript;
       const confidence = e.results[0][0].confidence; 
@@ -193,6 +197,7 @@ rec.onerror = (event) => {
     rec.start();
   };
 
+  // --- UNAUTHENTICATED VIEW ---
   if (!user) {
     return (
       <main style={{ background: '#f4f7f9', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
@@ -209,6 +214,7 @@ rec.onerror = (event) => {
     );
   }
 
+  // --- AUTHENTICATED VIEW ---
   return (
     <main style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif', position: 'relative' }}>
       
@@ -220,9 +226,8 @@ rec.onerror = (event) => {
             <ol style={{ paddingLeft: '20px', color: '#444', lineHeight: '1.6' }}>
               <li style={{ marginBottom: '10px' }}><strong>Gere uma frase ou palavra</strong> usando os botões azuis ou laranjas.</li>
               <li style={{ marginBottom: '10px' }}>Aperte 🔊 para ouvir a pronúncia, ou 🐢 para ouvir devagar.</li>
-              <li style={{ marginBottom: '10px' }}>Escolha o sotaque que deseja praticar (Americano ou Britânico).</li>
-              <li style={{ marginBottom: '10px' }}>Aperte <strong>"Praticar Pronúncia"</strong>. O botão ficará vermelho.</li>
-              <li style={{ marginBottom: '10px' }}>Leia o texto em voz alta claramente. O microfone desliga sozinho quando você parar de falar.</li>
+              <li style={{ marginBottom: '10px' }}>Escolha o sotaque.</li>
+              <li style={{ marginBottom: '10px' }}>Aperte <strong>"Praticar Pronúncia"</strong>. Leia alto.</li>
               <li>Ganhe estrelas e XP baseado na sua precisão!</li>
             </ol>
             <button onClick={() => setIsModalOpen(false)} style={{ width: '100%', background: '#ff6a00', color: 'white', border: 'none', padding: '12px', borderRadius: '10px', fontWeight: 'bold', marginTop: '15px', cursor: 'pointer' }}>Entendi!</button>
