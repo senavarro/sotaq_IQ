@@ -23,14 +23,16 @@ const getLevelInfo = (xp) => {
 export default function QuevedoVIP() {
   const [email, setEmail] = useState('');
   const [user, setUser] = useState(null);
-  const [loginError, setLoginError] = useState(''); // Renamed and used
+  const [loginError, setLoginError] = useState('');
   const [stats, setStats] = useState({ count: 12, xp: 0 });
   const [text, setText] = useState('');
   const [accent, setAccent] = useState('en-US');
   const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false); // NEW: Processing State
   const [activeRec, setActiveRec] = useState(null);
   const [feedback, setFeedback] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false); // Used in JSX
+  const [isModalOpen, setIsModalOpen] = useState(false); 
+  const [isEnergyModalOpen, setIsEnergyModalOpen] = useState(false); // NEW: Energy Modal State
   const [completedText, setCompletedText] = useState('');
 
   useEffect(() => {
@@ -107,8 +109,20 @@ export default function QuevedoVIP() {
     rec.interimResults = false;
     setActiveRec(rec); 
     rec.onstart = () => { setIsRecording(true); setFeedback(null); };
-    rec.onend = () => { setIsRecording(false); setActiveRec(null); };
+    rec.onend = () => { 
+      setIsRecording(false); 
+      setActiveRec(null); 
+    };
+    rec.onerror = () => {
+      setIsRecording(false);
+      setIsProcessing(false);
+      setActiveRec(null);
+    };
+    
     rec.onresult = async (e) => {
+      setIsProcessing(true); // Lock UI immediately when result is caught
+      setIsRecording(false);
+      
       const transcript = e.results[0][0].transcript;
       const confidence = e.results[0][0].confidence;
       
@@ -127,22 +141,35 @@ export default function QuevedoVIP() {
       });
 
       let baseScore = targetWords.length > 0 ? (matchCount / targetWords.length) * 100 : 0;
-      if (confidence < 0.90) baseScore *= confidence;
+      
+      // --- THE ULTIMATE SOTAQ STRICT GRADER ---
+      // A perfect native accent usually scores 0.95+. We punish anything below exponentially.
+      if (confidence < 0.95) {
+        // Power of 4 means a 0.85 confidence drops the score to ~52%. 
+        // This makes accent switching and clarity absolutely mandatory.
+        baseScore *= Math.pow(confidence, 4); 
+      }
+      
+      // Heavy Babble Penalty: -15% per extra word spoken
       if (heardWords.length > targetWords.length) {
-        baseScore -= ((heardWords.length - targetWords.length) * 10);
+        baseScore -= ((heardWords.length - targetWords.length) * 15);
       }
 
       let finalScore = Math.round(Math.max(0, baseScore));
       let stars = finalScore >= 90 ? 3 : finalScore >= 70 ? 2 : finalScore >= 40 ? 1 : 0;
       
-      if (stars >= 3) setCompletedText(text);
-      setFeedback({ stars, score: finalScore, heard: transcript });
-      if (stars === 3) confetti({ colors: ['#ff6a00', '#1a2a6c'] });
+      // Artificial delay to show the "Analisando..." UI
+      setTimeout(async () => {
+        if (stars >= 3) setCompletedText(text);
+        setFeedback({ stars, score: finalScore, heard: transcript });
+        if (stars === 3) confetti({ colors: ['#ff6a00', '#1a2a6c'] });
 
-      const newXP = stats.xp + (stars * 10);
-      const newCount = stats.count - 1;
-      await supabase.from('user_stats').update({ daily_count: newCount, total_xp: newXP }).eq('email', user);
-      setStats(prev => ({ ...prev, count: newCount, xp: newXP }));
+        const newXP = stats.xp + (stars * 10);
+        const newCount = stats.count - 1;
+        await supabase.from('user_stats').update({ daily_count: newCount, total_xp: newXP }).eq('email', user);
+        setStats(prev => ({ ...prev, count: newCount, xp: newXP }));
+        setIsProcessing(false); // Unlock UI
+      }, 1500); 
     };
     rec.start();
   };
@@ -150,11 +177,21 @@ export default function QuevedoVIP() {
   const isCompleted = completedText === text && text !== '';
 
   const handleMainAction = () => {
+    if (isProcessing) return; // Prevent clicking while processing
+    
     if (isCompleted) {
       Math.random() > 0.5 ? loadRandomPhrase() : loadRandomWord();
       return;
     }
+    
+    // Check for Energy Limit
+    if (stats.count <= 0 && !isRecording) {
+      setIsEnergyModalOpen(true);
+      return;
+    }
+
     if (isRecording) {
+      setIsProcessing(true); // Lock UI as soon as they hit stop
       if (activeRec) { try { activeRec.stop(); } catch(e) {} }
       setIsRecording(false);
     } else {
@@ -171,7 +208,7 @@ export default function QuevedoVIP() {
            <form onSubmit={handleLogin}>
              <input type="email" placeholder="Seu E-mail" value={email} onChange={e => setEmail(e.target.value)} style={{ width: '100%', padding: '16px', marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '16px' }} required />
              {loginError && <p style={{ color: '#ef4444', marginBottom: '15px', fontSize: '0.9rem' }}>{loginError}</p>}
-             <button type="submit" style={{ background: '#ff6a00', color: 'white', border: 'none', padding: '16px', borderRadius: '12px', fontWeight: 'bold', width: '100%', fontSize: '16px' }}>ENTRAR</button>
+             <button type="submit" style={{ background: '#ff6a00', color: 'white', border: 'none', padding: '16px', borderRadius: '12px', fontWeight: 'bold', width: '100%', fontSize: '16px', cursor: 'pointer' }}>ENTRAR</button>
            </form>
         </div>
       </main>
@@ -183,126 +220,50 @@ export default function QuevedoVIP() {
   return (
     <main style={{ background: '#f8fafc', minHeight: '100vh', fontFamily: 'system-ui, sans-serif', paddingBottom: '40px' }}>
       
+      {/* RULES MODAL */}
       {isModalOpen && (
-        <div style={{ 
-          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', 
-          background: 'rgba(15, 23, 42, 0.7)', display: 'flex', alignItems: 'center', 
-          justifyContent: 'center', zIndex: 1000, padding: '15px', 
-          backdropFilter: 'blur(8px)', boxSizing: 'border-box' 
-        }}>
-          <div style={{ 
-            background: 'white', padding: '28px', borderRadius: '28px', 
-            maxWidth: '420px', width: '100%', position: 'relative', 
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-            border: '1px solid #e2e8f0', maxHeight: '90vh', overflowY: 'auto'
-          }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(15, 23, 42, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '15px', backdropFilter: 'blur(8px)', boxSizing: 'border-box' }}>
+          <div style={{ background: 'white', padding: '28px', borderRadius: '28px', maxWidth: '420px', width: '100%', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', maxHeight: '90vh', overflowY: 'auto' }}>
             <button onClick={() => setIsModalOpen(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: '#f1f5f9', border: 'none', width: '32px', height: '32px', borderRadius: '50%', fontSize: '14px', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
-            
-            <h2 style={{ color: '#0f172a', marginTop: 0, fontSize: '1.4rem', fontWeight: '900', letterSpacing: '-0.5px' }}>
-              Manual do SotaQ 🎓
-            </h2>
-            
+            <h2 style={{ color: '#0f172a', marginTop: 0, fontSize: '1.4rem', fontWeight: '900', letterSpacing: '-0.5px' }}>Manual do SotaQ 🎓</h2>
             <div style={{ textAlign: 'left', marginTop: '15px' }}>
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}>
-                <span style={{ fontSize: '1.3rem' }}>🎲</span>
-                <div>
-                  <p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>1. Gere o Desafio</p>
-                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Carregue frases reais ou palavras difíceis nos dados.</p>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}>
-                <span style={{ fontSize: '1.3rem' }}>🇺🇸</span>
-                <div>
-                  <p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>2. Escolha seu Sotaque</p>
-                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Alterne entre USA e UK. A IA mudará a "orelha" para validar sua pronúncia específica.</p>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}>
-                <span style={{ fontSize: '1.3rem' }}>🔊</span>
-                <div>
-                  <p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>3. Ouça a Referência</p>
-                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Escute no modo Normal ou Tartaruga para pegar os detalhes.</p>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}>
-                <span style={{ fontSize: '1.3rem' }}>🎤</span>
-                <div>
-                  <p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>4. Pratique e Pare</p>
-                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Toque para gravar e **toque novamente para encerrar**. O Strict Mode não perdoa erros!</p>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}>
-                <span style={{ fontSize: '1.3rem' }}>🏆</span>
-                <div>
-                  <p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>5. Ganhe XP e Bloqueie</p>
-                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Acertos perfeitos (3★) bloqueiam a frase. Se já dominou, hora de evoluir para a próxima!</p>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <span style={{ fontSize: '1.3rem' }}>⚡</span>
-                <div>
-                  <p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>6. Energia Diária</p>
-                  <p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Você tem 12 energias por dia. Use cada uma com foco total.</p>
-                </div>
-              </div>
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🎲</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>1. Gere o Desafio</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Carregue frases reais ou palavras difíceis nos dados.</p></div></div>
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🇺🇸</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>2. Escolha seu Sotaque</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Alterne entre USA e UK. A IA mudará a "orelha" para validar sua pronúncia específica.</p></div></div>
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🔊</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>3. Ouça a Referência</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Escute no modo Normal ou Tartaruga para pegar os detalhes.</p></div></div>
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🎤</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>4. Pratique e Pare</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Toque para gravar e **toque novamente para encerrar**. O Strict Mode não perdoa erros!</p></div></div>
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🏆</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>5. Ganhe XP e Bloqueie</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Acertos perfeitos (3★) bloqueiam a frase. Se já dominou, hora de evoluir para a próxima!</p></div></div>
+              <div style={{ display: 'flex', gap: '12px' }}><span style={{ fontSize: '1.3rem' }}>⚡</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>6. Energia Diária</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Você tem 12 energias por dia. Use cada uma com foco total.</p></div></div>
             </div>
-
-            <button 
-              onClick={() => setIsModalOpen(false)} 
-              style={{ 
-                width: '100%', background: 'linear-gradient(135deg, #1a2a6c, #ff6a00)', 
-                color: 'white', border: 'none', padding: '16px', borderRadius: '14px', 
-                fontWeight: '900', marginTop: '20px', cursor: 'pointer', fontSize: '1rem'
-              }}
-            >
-              ESTOU PRONTO
-            </button>
+            <button onClick={() => setIsModalOpen(false)} style={{ width: '100%', background: 'linear-gradient(135deg, #1a2a6c, #ff6a00)', color: 'white', border: 'none', padding: '16px', borderRadius: '14px', fontWeight: '900', marginTop: '20px', cursor: 'pointer', fontSize: '1rem' }}>ESTOU PRONTO</button>
           </div>
         </div>
       )}
 
-      <header style={{ 
-        position: 'sticky', top: 0, zIndex: 50, background: 'white', 
-        padding: '12px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', 
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center' 
-      }}>
+      {/* OUT OF ENERGY MODAL */}
+      {isEnergyModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(15, 23, 42, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px', backdropFilter: 'blur(8px)' }}>
+          <div style={{ background: 'white', padding: '35px', borderRadius: '28px', maxWidth: '400px', width: '100%', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '15px' }}>⚡</div>
+            <h2 style={{ color: '#0f172a', margin: '0 0 10px 0', fontWeight: '900' }}>Bateria Esgotada!</h2>
+            <p style={{ color: '#64748b', lineHeight: '1.6', marginBottom: '25px', fontSize: '0.95rem' }}>
+              Você completou todos os seus 12 treinos diários. Excelente dedicação! <br/><br/> Sua energia será recarregada automaticamente <b>à meia-noite</b>. Volte amanhã!
+            </p>
+            <button onClick={() => setIsEnergyModalOpen(false)} style={{ width: '100%', background: '#1a2a6c', color: 'white', padding: '16px', borderRadius: '14px', fontWeight: '900', border: 'none', cursor: 'pointer', fontSize: '1rem' }}>FECHAR</button>
+          </div>
+        </div>
+      )}
+
+      <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'white', padding: '12px 20px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ flex: 1 }}>
-          <h3 style={{ color: '#1a2a6c', margin: 0, fontSize: '1.05rem', fontWeight: '900', letterSpacing: '-0.5px' }}>
-            SotaQ - Idiomas Quevedo
-          </h3>
+          <h3 style={{ color: '#1a2a6c', margin: 0, fontSize: '1.05rem', fontWeight: '900', letterSpacing: '-0.5px' }}>SotaQ - Idiomas Quevedo</h3>
           <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-            <button 
-              onClick={() => setIsModalOpen(true)} 
-              style={{ 
-                background: '#fff7ed', border: '1px solid #ffedd5', color: '#ff6a00', 
-                padding: '6px 12px', borderRadius: '50px', fontSize: '0.75rem', 
-                fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' 
-              }}
-            >
-              ❓ Regras
-            </button>
-            <button 
-              onClick={handleLogout} 
-              style={{ 
-                background: '#f8fafc', border: '1px solid #e2e8f0', color: '#94a3b8', 
-                padding: '6px 12px', borderRadius: '50px', fontSize: '0.75rem', 
-                fontWeight: '700', cursor: 'pointer' 
-              }}
-            >
-              Sair
-            </button>
+            <button onClick={() => setIsModalOpen(true)} disabled={isProcessing} style={{ background: '#e6f0ff', border: '1px solid #cce0ff', color: '#1a2a6c', padding: '6px 12px', borderRadius: '50px', fontSize: '0.75rem', fontWeight: '800', cursor: isProcessing ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>❓ Regras</button>
+            <button onClick={handleLogout} disabled={isProcessing} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', color: '#94a3b8', padding: '6px 12px', borderRadius: '50px', fontSize: '0.75rem', fontWeight: '700', cursor: isProcessing ? 'not-allowed' : 'pointer' }}>Sair</button>
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-           <div style={{ background: '#1a2a6c', padding: '8px 12px', borderRadius: '12px', border: '1px solid #ffedd5' }}>
-            <p style={{ margin: 0, color: '#ff6a00', fontWeight: '900', fontSize: '0.9rem' }}>
-              ⚡ {stats.count} / 12
-            </p>
+           <div style={{ background: '#1a2a6c', padding: '8px 12px', borderRadius: '12px' }}>
+            <p style={{ margin: 0, color: 'white', fontWeight: '900', fontSize: '0.9rem' }}>⚡ {stats.count} / 12</p>
            </div>
         </div>
       </header>
@@ -322,44 +283,46 @@ export default function QuevedoVIP() {
       <div style={{ padding: '0 20px', maxWidth: '600px', margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={loadRandomWord} style={{ background: '#e0f2fe', color: '#0284c7', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '700', cursor: 'pointer' }}>🎲 Palavra</button>
-            <button onClick={loadRandomPhrase} style={{ background: '#ffedd5', color: '#ea580c', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '700', cursor: 'pointer' }}>🎲 Frase</button>
+            <button onClick={loadRandomWord} disabled={isRecording || isProcessing} style={{ background: '#e0f2fe', color: '#0284c7', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '700', cursor: (isRecording || isProcessing) ? 'not-allowed' : 'pointer' }}>🎲 Palavra</button>
+            <button onClick={loadRandomPhrase} disabled={isRecording || isProcessing} style={{ background: '#ffedd5', color: '#ea580c', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '700', cursor: (isRecording || isProcessing) ? 'not-allowed' : 'pointer' }}>🎲 Frase</button>
           </div>
         </div>
 
         <textarea 
           value={text} 
           onChange={e => handleTextChange(e.target.value)}
-          disabled={isRecording || isCompleted}
+          disabled={isRecording || isCompleted || isProcessing}
           placeholder="Toque em um dado acima para começar..."
           style={{ width: '100%', height: '100px', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '15px', fontSize: '16px', background: isCompleted ? '#f8fafc' : 'white', fontFamily: 'inherit' }}
         />
 
         {text && (
           <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-            <button onClick={() => playAudio(1.0)} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'white', border: '1px solid #e2e8f0', fontWeight: '700', cursor: 'pointer' }}>🔊 Ouvir</button>
-            <button onClick={() => playAudio(0.5)} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'white', border: '1px solid #e2e8f0', fontWeight: '700', cursor: 'pointer' }}>🐢 Devagar</button>
+            <button onClick={() => playAudio(1.0)} disabled={isProcessing} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'white', border: '1px solid #e2e8f0', fontWeight: '700', cursor: isProcessing ? 'not-allowed' : 'pointer' }}>🔊 Ouvir</button>
+            <button onClick={() => playAudio(0.5)} disabled={isProcessing} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'white', border: '1px solid #e2e8f0', fontWeight: '700', cursor: isProcessing ? 'not-allowed' : 'pointer' }}>🐢 Devagar</button>
           </div>
         )}
         
         <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '14px', padding: '4px', marginBottom: '25px' }}>
-          <button onClick={() => setAccent('en-US')} style={{ flex: 1, padding: '10px', borderRadius: '10px', background: accent === 'en-US' ? 'white' : 'transparent', fontWeight: '700', border: 'none', cursor: 'pointer' }}>🇺🇸 USA</button>
-          <button onClick={() => setAccent('en-GB')} style={{ flex: 1, padding: '10px', borderRadius: '10px', background: accent === 'en-GB' ? 'white' : 'transparent', fontWeight: '700', border: 'none', cursor: 'pointer' }}>🇬🇧 UK</button>
+          <button onClick={() => setAccent('en-US')} disabled={isProcessing} style={{ flex: 1, padding: '10px', borderRadius: '10px', background: accent === 'en-US' ? 'white' : 'transparent', fontWeight: '700', border: 'none', cursor: isProcessing ? 'not-allowed' : 'pointer' }}>🇺🇸 USA</button>
+          <button onClick={() => setAccent('en-GB')} disabled={isProcessing} style={{ flex: 1, padding: '10px', borderRadius: '10px', background: accent === 'en-GB' ? 'white' : 'transparent', fontWeight: '700', border: 'none', cursor: isProcessing ? 'not-allowed' : 'pointer' }}>🇬🇧 UK</button>
         </div>
 
         <button 
           onClick={handleMainAction} 
-          disabled={stats.count <= 0 || (!isRecording && !text.trim() && !isCompleted)}
+          disabled={isProcessing || (!isRecording && !text.trim() && !isCompleted)}
           style={{ 
             width: '100%', padding: '18px', borderRadius: '16px', border: 'none', 
-            background: isRecording ? '#ef4444' : isCompleted ? '#ff6a00' : (stats.count <= 0 ? '#cbd5e1' : '#1a2a6c'), 
-            color: 'white', fontWeight: '800', fontSize: '1rem', cursor: 'pointer'
+            background: isProcessing ? '#f59e0b' : isRecording ? '#ef4444' : isCompleted ? '#ff6a00' : '#1a2a6c', 
+            color: 'white', fontWeight: '800', fontSize: '1rem', 
+            cursor: (isProcessing || (!isRecording && !text.trim() && !isCompleted)) ? 'not-allowed' : 'pointer',
+            transition: 'background 0.3s'
           }}
         >
-          {isRecording ? '🔴 CLIQUE PARA PARAR' : isCompleted ? '🌟 PERFEITO! PRÓXIMA 🎲' : '🎤 PRATICAR PRONÚNCIA'}
+          {isProcessing ? '⏳ Analisando, não vai demorar...' : isRecording ? '🔴 CLIQUE PARA PARAR' : isCompleted ? '🌟 PERFEITO! PRÓXIMA 🎲' : '🎤 PRATICAR PRONÚNCIA'}
         </button>
 
-        {feedback && (
+        {feedback && !isProcessing && (
           <div style={{ marginTop: '20px', textAlign: 'center', padding: '20px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '16px' }}>
             <div style={{ fontSize: '2.5rem', color: '#ff6a00' }}>{'★'.repeat(feedback.stars)}{'☆'.repeat(3 - feedback.stars)}</div>
             <p style={{ fontWeight: '800', fontSize: '1.2rem', margin: '5px 0' }}>Precisão: {feedback.score}%</p>
