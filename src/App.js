@@ -125,9 +125,17 @@ export default function QuevedoVIP() {
     rec.lang = accent;
     rec.interimResults = false;
     
-    rec.onstart = () => { setIsRecording(true); setFeedback(null); };
-    rec.onend = () => setIsRecording(false);
-
+rec.onerror = (event) => {
+      setIsRecording(false); // Instantly turn off the red button
+      
+      if (event.error === 'no-speech') {
+        alert("⚠️ Não ouvi nada. Tente falar um pouco mais alto ou verifique o microfone.");
+      } else if (event.error === 'network') {
+        alert("⚠️ Erro de conexão. Verifique sua internet.");
+      } else {
+        console.error("Erro no microfone:", event.error);
+      }
+    };
     rec.onresult = async (e) => {
       const transcript = e.results[0][0].transcript;
       const confidence = e.results[0][0].confidence; 
