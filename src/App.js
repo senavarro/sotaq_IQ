@@ -79,12 +79,13 @@ export default function QuevedoVIP() {
     setText('');
   };
 
-  // --- API GENERATORS ---
+  // --- API GENERATORS (Fixed Language Bug) ---
   const loadRandomWord = async () => {
     setIsLoading(true);
     setFeedback(null);
     try {
-      const response = await fetch('https://random-word-api.herokuapp.com/word');
+      // Added ?lang=en to force English words only
+      const response = await fetch('https://random-word-api.herokuapp.com/word?lang=en');
       const data = await response.json();
       setText(data[0].charAt(0).toUpperCase() + data[0].slice(1)); 
     } catch (err) {
@@ -125,7 +126,7 @@ export default function QuevedoVIP() {
     window.speechSynthesis.speak(utterance);
   };
 
-  // --- RECORDING & GRADING LOGIC ---
+  // --- RECORDING & GRADING LOGIC (Fixed 0% Bug) ---
   const startPractice = () => {
     const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
     
@@ -157,7 +158,6 @@ export default function QuevedoVIP() {
 
     rec.onresult = async (e) => {
       const transcript = e.results[0][0].transcript;
-      const confidence = e.results[0][0].confidence; 
       
       const heardText = transcript.toLowerCase();
       const targetText = text.toLowerCase();
@@ -182,16 +182,16 @@ export default function QuevedoVIP() {
       let baseAccuracy = 0;
       if (targetWords.length > 0) {
         baseAccuracy = (matchCount / targetWords.length) * 100;
-      } else {
-        baseAccuracy = confidence * 100;
       }
 
+      // Babble Penalty (-5% per extra word)
       if (heardWords.length > targetWords.length) {
         const extraWords = heardWords.length - targetWords.length;
         baseAccuracy -= (extraWords * 5); 
       }
 
-      let accuracy = Math.round(baseAccuracy * confidence);
+      // Removed Apple's broken confidence multiplier!
+      let accuracy = Math.round(baseAccuracy);
 
       if (accuracy < 0) accuracy = 0;
       if (accuracy > 100) accuracy = 100;
