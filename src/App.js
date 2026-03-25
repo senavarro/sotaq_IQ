@@ -28,11 +28,11 @@ export default function QuevedoVIP() {
   const [text, setText] = useState('');
   const [accent, setAccent] = useState('en-US');
   const [isRecording, setIsRecording] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false); // NEW: Processing State
+  const [isProcessing, setIsProcessing] = useState(false); 
   const [activeRec, setActiveRec] = useState(null);
   const [feedback, setFeedback] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false); 
-  const [isEnergyModalOpen, setIsEnergyModalOpen] = useState(false); // NEW: Energy Modal State
+  const [isEnergyModalOpen, setIsEnergyModalOpen] = useState(false); 
   const [completedText, setCompletedText] = useState('');
 
   useEffect(() => {
@@ -90,13 +90,29 @@ export default function QuevedoVIP() {
     setText(curatedPhrases[Math.floor(Math.random() * curatedPhrases.length)]);
   };
 
+  // --- FIXED ROBUST AUDIO ENGINE ---
   const playAudio = (speed = 1.0) => {
     if (!text) return;
     window.speechSynthesis.cancel(); 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = accent; utterance.rate = speed; 
+    utterance.lang = accent; 
+    utterance.rate = speed; 
+    
     const voices = window.speechSynthesis.getVoices();
-    const specificVoice = voices.find(voice => voice.lang === accent || voice.lang === accent.replace('-', '_'));
+    let specificVoice;
+    
+    // Explicitly force the browser to find the correct accent by reading the voice names
+    if (accent === 'en-US') {
+      specificVoice = voices.find(v => v.lang === 'en-US' || v.lang === 'en_US' || v.name.includes('United States') || v.name.includes('US') || v.name.includes('American'));
+    } else {
+      specificVoice = voices.find(v => v.lang === 'en-GB' || v.lang === 'en_GB' || v.name.includes('United Kingdom') || v.name.includes('GB') || v.name.includes('UK') || v.name.includes('British'));
+    }
+
+    // Fallback to exactly what the browser thinks is right if the explicit search fails
+    if (!specificVoice) {
+      specificVoice = voices.find(voice => voice.lang === accent || voice.lang === accent.replace('-', '_'));
+    }
+
     if (specificVoice) utterance.voice = specificVoice;
     window.speechSynthesis.speak(utterance);
   };
@@ -120,7 +136,7 @@ export default function QuevedoVIP() {
     };
     
     rec.onresult = async (e) => {
-      setIsProcessing(true); // Lock UI immediately when result is caught
+      setIsProcessing(true); 
       setIsRecording(false);
       
       const transcript = e.results[0][0].transcript;
@@ -142,15 +158,12 @@ export default function QuevedoVIP() {
 
       let baseScore = targetWords.length > 0 ? (matchCount / targetWords.length) * 100 : 0;
       
-      // --- THE ULTIMATE SOTAQ STRICT GRADER ---
-      // A perfect native accent usually scores 0.95+. We punish anything below exponentially.
+      // Strict Mode: Exponential Penalty for bad accent/pronunciation
       if (confidence < 0.95) {
-        // Power of 4 means a 0.85 confidence drops the score to ~52%. 
-        // This makes accent switching and clarity absolutely mandatory.
         baseScore *= Math.pow(confidence, 4); 
       }
       
-      // Heavy Babble Penalty: -15% per extra word spoken
+      // Babble Penalty
       if (heardWords.length > targetWords.length) {
         baseScore -= ((heardWords.length - targetWords.length) * 15);
       }
@@ -158,7 +171,6 @@ export default function QuevedoVIP() {
       let finalScore = Math.round(Math.max(0, baseScore));
       let stars = finalScore >= 90 ? 3 : finalScore >= 70 ? 2 : finalScore >= 40 ? 1 : 0;
       
-      // Artificial delay to show the "Analisando..." UI
       setTimeout(async () => {
         if (stars >= 3) setCompletedText(text);
         setFeedback({ stars, score: finalScore, heard: transcript });
@@ -168,7 +180,7 @@ export default function QuevedoVIP() {
         const newCount = stats.count - 1;
         await supabase.from('user_stats').update({ daily_count: newCount, total_xp: newXP }).eq('email', user);
         setStats(prev => ({ ...prev, count: newCount, xp: newXP }));
-        setIsProcessing(false); // Unlock UI
+        setIsProcessing(false); 
       }, 1500); 
     };
     rec.start();
@@ -177,21 +189,20 @@ export default function QuevedoVIP() {
   const isCompleted = completedText === text && text !== '';
 
   const handleMainAction = () => {
-    if (isProcessing) return; // Prevent clicking while processing
+    if (isProcessing) return; 
     
     if (isCompleted) {
       Math.random() > 0.5 ? loadRandomPhrase() : loadRandomWord();
       return;
     }
     
-    // Check for Energy Limit
     if (stats.count <= 0 && !isRecording) {
       setIsEnergyModalOpen(true);
       return;
     }
 
     if (isRecording) {
-      setIsProcessing(true); // Lock UI as soon as they hit stop
+      setIsProcessing(true); 
       if (activeRec) { try { activeRec.stop(); } catch(e) {} }
       setIsRecording(false);
     } else {
@@ -234,7 +245,7 @@ export default function QuevedoVIP() {
               <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🏆</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>5. Ganhe XP e Bloqueie</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Acertos perfeitos (3★) bloqueiam a frase. Se já dominou, hora de evoluir para a próxima!</p></div></div>
               <div style={{ display: 'flex', gap: '12px' }}><span style={{ fontSize: '1.3rem' }}>⚡</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>6. Energia Diária</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Você tem 12 energias por dia. Use cada uma com foco total.</p></div></div>
             </div>
-            <button onClick={() => setIsModalOpen(false)} style={{ width: '100%', background: 'linear-gradient(135deg, #1a2a6c, #ff6a00)', color: 'white', border: 'none', padding: '16px', borderRadius: '14px', fontWeight: '900', marginTop: '20px', cursor: 'pointer', fontSize: '1rem' }}>ESTOU PRONTO</button>
+            <button onClick={() => setIsModalOpen(false)} style={{ width: '100%', background: 'linear-gradient(135deg, #1a2a6c, #1a2a6c)', color: 'white', border: 'none', padding: '16px', borderRadius: '14px', fontWeight: '900', marginTop: '20px', cursor: 'pointer', fontSize: '1rem', boxShadow: '0 10px 15px -3px rgba(26, 42, 108, 0.3)' }}>ESTOU PRONTO</button>
           </div>
         </div>
       )}
@@ -262,8 +273,8 @@ export default function QuevedoVIP() {
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-           <div style={{ background: '#1a2a6c', padding: '8px 12px', borderRadius: '12px' }}>
-            <p style={{ margin: 0, color: 'white', fontWeight: '900', fontSize: '0.9rem' }}>⚡ {stats.count} / 12</p>
+           <div style={{ background: '#e6f0ff', padding: '8px 12px', borderRadius: '12px', border: '1px solid #cce0ff' }}>
+            <p style={{ margin: 0, color: '#1a2a6c', fontWeight: '900', fontSize: '0.9rem' }}>⚡ {stats.count} / 12</p>
            </div>
         </div>
       </header>
@@ -303,9 +314,10 @@ export default function QuevedoVIP() {
           </div>
         )}
         
-        <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '14px', padding: '4px', marginBottom: '25px' }}>
-          <button onClick={() => setAccent('en-US')} disabled={isProcessing} style={{ flex: 1, padding: '10px', borderRadius: '10px', background: accent === 'en-US' ? 'white' : 'transparent', fontWeight: '700', border: 'none', cursor: isProcessing ? 'not-allowed' : 'pointer' }}>🇺🇸 USA</button>
-          <button onClick={() => setAccent('en-GB')} disabled={isProcessing} style={{ flex: 1, padding: '10px', borderRadius: '10px', background: accent === 'en-GB' ? 'white' : 'transparent', fontWeight: '700', border: 'none', cursor: isProcessing ? 'not-allowed' : 'pointer' }}>🇬🇧 UK</button>
+        {/* POLISHED ACCENT UI */}
+        <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '16px', padding: '6px', marginBottom: '25px', border: '1px solid #e2e8f0' }}>
+          <button onClick={() => setAccent('en-US')} disabled={isProcessing} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: accent === 'en-US' ? '#1a2a6c' : 'transparent', color: accent === 'en-US' ? 'white' : '#64748b', fontWeight: '800', border: 'none', cursor: isProcessing ? 'not-allowed' : 'pointer', boxShadow: accent === 'en-US' ? '0 4px 12px rgba(26, 42, 108, 0.3)' : 'none', transition: 'all 0.3s ease', fontSize: '0.95rem' }}>🇺🇸 USA</button>
+          <button onClick={() => setAccent('en-GB')} disabled={isProcessing} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: accent === 'en-GB' ? '#1a2a6c' : 'transparent', color: accent === 'en-GB' ? 'white' : '#64748b', fontWeight: '800', border: 'none', cursor: isProcessing ? 'not-allowed' : 'pointer', boxShadow: accent === 'en-GB' ? '0 4px 12px rgba(26, 42, 108, 0.3)' : 'none', transition: 'all 0.3s ease', fontSize: '0.95rem' }}>🇬🇧 UK</button>
         </div>
 
         <button 
@@ -319,7 +331,7 @@ export default function QuevedoVIP() {
             transition: 'background 0.3s'
           }}
         >
-          {isProcessing ? '⏳ Analisando, não vai demorar...' : isRecording ? '🔴 CLIQUE PARA PARAR' : isCompleted ? '🌟 PERFEITO! PRÓXIMA 🎲' : '🎤 PRATICAR PRONÚNCIA'}
+          {isProcessing ? '⏳ Analisando pronúncia...' : isRecording ? '🔴 CLIQUE PARA PARAR' : isCompleted ? '🌟 PERFEITO! PRÓXIMA 🎲' : '🎤 PRATICAR PRONÚNCIA'}
         </button>
 
         {feedback && !isProcessing && (
