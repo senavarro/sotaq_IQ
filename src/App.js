@@ -167,7 +167,7 @@ export default function QuevedoVIP() {
       <main style={{ background: '#f8fafc', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif' }}>
         <div style={{ background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', textAlign: 'center', maxWidth: '400px', width: '90%' }}>
            <div style={{ background: 'linear-gradient(135deg, #1a2a6c, #ff6a00)', color: 'white', width: '60px', height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '16px', margin: '0 auto 20px', fontWeight: '900', fontSize: '28px' }}>Q</div>
-           <h2 style={{ color: '#0f172a', marginBottom: '8px' }}>VIP Portal</h2>
+           <h2 style={{ color: '#0f172a', marginBottom: '8px' }}>SotaQ by Idiomas Quevedo</h2>
            <form onSubmit={handleLogin}>
              <input type="email" placeholder="Seu E-mail VIP" value={email} onChange={e => setEmail(e.target.value)} style={{ width: '100%', padding: '16px', marginBottom: '15px', border: '1px solid #e2e8f0', borderRadius: '12px', fontSize: '16px' }} required />
              {loginError && <p style={{ color: '#ef4444', marginBottom: '15px', fontSize: '0.9rem' }}>{loginError}</p>}
@@ -199,7 +199,7 @@ export default function QuevedoVIP() {
             <button onClick={() => setIsModalOpen(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: '#f1f5f9', border: 'none', width: '32px', height: '32px', borderRadius: '50%', fontSize: '14px', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
             
             <h2 style={{ color: '#0f172a', marginTop: 0, fontSize: '1.4rem', fontWeight: '900', letterSpacing: '-0.5px' }}>
-              Manual do Aluno VIP 🎓
+              Manual do SotaQ 🎓
             </h2>
             
             <div style={{ textAlign: 'left', marginTop: '15px' }}>
