@@ -34,7 +34,6 @@ export default function QuevedoVIP() {
   const [isRecording, setIsRecording] = useState(false);
   const [activeRec, setActiveRec] = useState(null);
   const [feedback, setFeedback] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [completedText, setCompletedText] = useState('');
 
