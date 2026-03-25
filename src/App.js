@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import confetti from 'canvas-confetti';
-import { curatedWords, curatedPhrases } from './phraseBank'; 
+// ONLY importing phrases now to prevent Netlify errors
+import { curatedPhrases } from './phraseBank'; 
 
 const getLevelInfo = (xp) => {
   const thresholds = [0, 500, 1500, 3000, 5000, 8000, 12000, 17000, 23000, 30000, 40000, 55000, 70000];
@@ -80,17 +81,11 @@ export default function QuevedoVIP() {
     if (newText !== completedText) setCompletedText('');
   };
 
-  const loadRandomWord = () => {
-    setFeedback(null); setCompletedText('');
-    setText(curatedWords[Math.floor(Math.random() * curatedWords.length)]);
-  };
-
   const loadRandomPhrase = () => {
     setFeedback(null); setCompletedText('');
     setText(curatedPhrases[Math.floor(Math.random() * curatedPhrases.length)]);
   };
 
-  // --- FIXED ROBUST AUDIO ENGINE ---
   const playAudio = (speed = 1.0) => {
     if (!text) return;
     window.speechSynthesis.cancel(); 
@@ -101,14 +96,12 @@ export default function QuevedoVIP() {
     const voices = window.speechSynthesis.getVoices();
     let specificVoice;
     
-    // Explicitly force the browser to find the correct accent by reading the voice names
     if (accent === 'en-US') {
       specificVoice = voices.find(v => v.lang === 'en-US' || v.lang === 'en_US' || v.name.includes('United States') || v.name.includes('US') || v.name.includes('American'));
     } else {
       specificVoice = voices.find(v => v.lang === 'en-GB' || v.lang === 'en_GB' || v.name.includes('United Kingdom') || v.name.includes('GB') || v.name.includes('UK') || v.name.includes('British'));
     }
 
-    // Fallback to exactly what the browser thinks is right if the explicit search fails
     if (!specificVoice) {
       specificVoice = voices.find(voice => voice.lang === accent || voice.lang === accent.replace('-', '_'));
     }
@@ -156,19 +149,29 @@ export default function QuevedoVIP() {
         if (index !== -1) { matchCount++; heardPool.splice(index, 1); }
       });
 
+      // BASE SCORE
       let baseScore = targetWords.length > 0 ? (matchCount / targetWords.length) * 100 : 0;
       
-      // Strict Mode: Exponential Penalty for bad accent/pronunciation
-      if (confidence < 0.95) {
-        baseScore *= Math.pow(confidence, 4); 
-      }
+      // 1. CHARACTER-LEVEL PENALTY (Catches weird accent vowel swallowing)
+      let charDiff = Math.abs(cleanHeard.length - cleanTarget.length);
+      baseScore -= (charDiff * 2); // Lose 2% for every missing/extra letter
       
-      // Babble Penalty
+      // 2. PHANTOM WORD PENALTY
       if (heardWords.length > targetWords.length) {
         baseScore -= ((heardWords.length - targetWords.length) * 15);
       }
 
+      // 3. THE "ACOUSTIC FRICTION" MULTIPLIER (Power of 6)
+      // If you speak American into a British AI, confidence drops to ~0.92. 
+      // 0.92 ^ 6 = 0.60. Your score is instantly crushed by 40%.
+      if (confidence < 0.98) {
+        baseScore *= Math.pow(confidence, 6); 
+      }
+
       let finalScore = Math.round(Math.max(0, baseScore));
+      // Give a tiny bump if they literally got it 100% perfect on text and confidence
+      if (cleanHeard === cleanTarget && confidence > 0.96) finalScore = 100;
+
       let stars = finalScore >= 90 ? 3 : finalScore >= 70 ? 2 : finalScore >= 40 ? 1 : 0;
       
       setTimeout(async () => {
@@ -192,7 +195,7 @@ export default function QuevedoVIP() {
     if (isProcessing) return; 
     
     if (isCompleted) {
-      Math.random() > 0.5 ? loadRandomPhrase() : loadRandomWord();
+      loadRandomPhrase();
       return;
     }
     
@@ -231,18 +234,17 @@ export default function QuevedoVIP() {
   return (
     <main style={{ background: '#f8fafc', minHeight: '100vh', fontFamily: 'system-ui, sans-serif', paddingBottom: '40px' }}>
       
-      {/* RULES MODAL */}
       {isModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(15, 23, 42, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '15px', backdropFilter: 'blur(8px)', boxSizing: 'border-box' }}>
           <div style={{ background: 'white', padding: '28px', borderRadius: '28px', maxWidth: '420px', width: '100%', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', border: '1px solid #e2e8f0', maxHeight: '90vh', overflowY: 'auto' }}>
             <button onClick={() => setIsModalOpen(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: '#f1f5f9', border: 'none', width: '32px', height: '32px', borderRadius: '50%', fontSize: '14px', cursor: 'pointer', color: '#64748b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
             <h2 style={{ color: '#0f172a', marginTop: 0, fontSize: '1.4rem', fontWeight: '900', letterSpacing: '-0.5px' }}>Manual do SotaQ 🎓</h2>
             <div style={{ textAlign: 'left', marginTop: '15px' }}>
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🎲</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>1. Gere o Desafio</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Carregue frases reais ou palavras difíceis nos dados.</p></div></div>
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🎲</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>1. Gere o Desafio</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Carregue frases reais de conversação.</p></div></div>
               <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🇺🇸</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>2. Escolha seu Sotaque</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Alterne entre USA e UK. A IA mudará a "orelha" para validar sua pronúncia específica.</p></div></div>
               <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🔊</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>3. Ouça a Referência</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Escute no modo Normal ou Tartaruga para pegar os detalhes.</p></div></div>
               <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🎤</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>4. Pratique e Pare</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Toque para gravar e **toque novamente para encerrar**. O Strict Mode não perdoa erros!</p></div></div>
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🏆</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>5. Ganhe XP e Bloqueie</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Acertos perfeitos (3★) bloqueiam a frase. Se já dominou, hora de evoluir para a próxima!</p></div></div>
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}><span style={{ fontSize: '1.3rem' }}>🏆</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>5. Ganhe XP e Bloqueie</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Acertos perfeitos (3★) bloqueiam a frase. Se já dominou, evolua!</p></div></div>
               <div style={{ display: 'flex', gap: '12px' }}><span style={{ fontSize: '1.3rem' }}>⚡</span><div><p style={{ margin: 0, fontWeight: '800', color: '#1e293b', fontSize: '0.9rem' }}>6. Energia Diária</p><p style={{ margin: 0, color: '#64748b', fontSize: '0.8rem' }}>Você tem 12 energias por dia. Use cada uma com foco total.</p></div></div>
             </div>
             <button onClick={() => setIsModalOpen(false)} style={{ width: '100%', background: 'linear-gradient(135deg, #1a2a6c, #1a2a6c)', color: 'white', border: 'none', padding: '16px', borderRadius: '14px', fontWeight: '900', marginTop: '20px', cursor: 'pointer', fontSize: '1rem', boxShadow: '0 10px 15px -3px rgba(26, 42, 108, 0.3)' }}>ESTOU PRONTO</button>
@@ -250,7 +252,6 @@ export default function QuevedoVIP() {
         </div>
       )}
 
-      {/* OUT OF ENERGY MODAL */}
       {isEnergyModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(15, 23, 42, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: '20px', backdropFilter: 'blur(8px)' }}>
           <div style={{ background: 'white', padding: '35px', borderRadius: '28px', maxWidth: '400px', width: '100%', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
@@ -292,18 +293,15 @@ export default function QuevedoVIP() {
       </div>
 
       <div style={{ padding: '0 20px', maxWidth: '600px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={loadRandomWord} disabled={isRecording || isProcessing} style={{ background: '#e0f2fe', color: '#0284c7', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '700', cursor: (isRecording || isProcessing) ? 'not-allowed' : 'pointer' }}>🎲 Palavra</button>
-            <button onClick={loadRandomPhrase} disabled={isRecording || isProcessing} style={{ background: '#ffedd5', color: '#ea580c', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '700', cursor: (isRecording || isProcessing) ? 'not-allowed' : 'pointer' }}>🎲 Frase</button>
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '15px' }}>
+            <button onClick={loadRandomPhrase} disabled={isRecording || isProcessing} style={{ width: '100%', background: '#ffedd5', color: '#ea580c', border: 'none', padding: '12px 14px', borderRadius: '16px', fontWeight: '800', cursor: (isRecording || isProcessing) ? 'not-allowed' : 'pointer', fontSize: '1rem' }}>🎲 Gerar Nova Frase</button>
         </div>
 
         <textarea 
           value={text} 
           onChange={e => handleTextChange(e.target.value)}
           disabled={isRecording || isCompleted || isProcessing}
-          placeholder="Toque em um dado acima para começar..."
+          placeholder="Gere uma frase acima para começar..."
           style={{ width: '100%', height: '100px', padding: '16px', borderRadius: '16px', border: '1px solid #e2e8f0', marginBottom: '15px', fontSize: '16px', background: isCompleted ? '#f8fafc' : 'white', fontFamily: 'inherit' }}
         />
 
@@ -314,7 +312,6 @@ export default function QuevedoVIP() {
           </div>
         )}
         
-        {/* POLISHED ACCENT UI */}
         <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: '16px', padding: '6px', marginBottom: '25px', border: '1px solid #e2e8f0' }}>
           <button onClick={() => setAccent('en-US')} disabled={isProcessing} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: accent === 'en-US' ? '#1a2a6c' : 'transparent', color: accent === 'en-US' ? 'white' : '#64748b', fontWeight: '800', border: 'none', cursor: isProcessing ? 'not-allowed' : 'pointer', boxShadow: accent === 'en-US' ? '0 4px 12px rgba(26, 42, 108, 0.3)' : 'none', transition: 'all 0.3s ease', fontSize: '0.95rem' }}>🇺🇸 USA</button>
           <button onClick={() => setAccent('en-GB')} disabled={isProcessing} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: accent === 'en-GB' ? '#1a2a6c' : 'transparent', color: accent === 'en-GB' ? 'white' : '#64748b', fontWeight: '800', border: 'none', cursor: isProcessing ? 'not-allowed' : 'pointer', boxShadow: accent === 'en-GB' ? '0 4px 12px rgba(26, 42, 108, 0.3)' : 'none', transition: 'all 0.3s ease', fontSize: '0.95rem' }}>🇬🇧 UK</button>
@@ -328,10 +325,11 @@ export default function QuevedoVIP() {
             background: isProcessing ? '#f59e0b' : isRecording ? '#ef4444' : isCompleted ? '#ff6a00' : '#1a2a6c', 
             color: 'white', fontWeight: '800', fontSize: '1rem', 
             cursor: (isProcessing || (!isRecording && !text.trim() && !isCompleted)) ? 'not-allowed' : 'pointer',
-            transition: 'background 0.3s'
+            transition: 'background 0.3s',
+            boxShadow: isProcessing ? 'none' : '0 10px 15px -3px rgba(0,0,0,0.1)'
           }}
         >
-          {isProcessing ? '⏳ Analisando pronúncia...' : isRecording ? '🔴 CLIQUE PARA PARAR' : isCompleted ? '🌟 PERFEITO! PRÓXIMA 🎲' : '🎤 PRATICAR PRONÚNCIA'}
+          {isProcessing ? '⏳ Analisando, não vai demorar...' : isRecording ? '🔴 CLIQUE PARA PARAR' : isCompleted ? '🌟 PERFEITO! NOVA FRASE 🎲' : '🎤 PRATICAR PRONÚNCIA'}
         </button>
 
         {feedback && !isProcessing && (
