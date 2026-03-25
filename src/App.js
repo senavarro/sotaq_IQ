@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import confetti from 'canvas-confetti';
 
-// --- FALLBACK LIBRARIES ---
 const fallbackWords = ["Beautiful", "Development", "Opportunity", "Technology", "Language", "Vocabulary", "Pronunciation", "Experience", "Knowledge", "Challenge"];
 const fallbackPhrases = [
   "Where is the nearest subway station?", "I would like to order a large coffee, please.",
@@ -11,11 +10,22 @@ const fallbackPhrases = [
   "Excuse me, do you speak English?", "This meal is absolutely delicious!"
 ];
 
+// --- LEVEL PROGRESSION CURVE ---
+const getLevelInfo = (xp) => {
+  const thresholds = [0, 500, 1500, 3000, 5000, 8000, 12000, 17000, 23000, 30000];
+  let level = 1;
+  for (let i = 0; i < thresholds.length; i++) {
+    if (xp >= thresholds[i]) level = i + 1;
+  }
+  const nextTier = thresholds[level] || "MAX";
+  return { level, nextTier };
+};
+
 export default function QuevedoVIP() {
   const [email, setEmail] = useState('');
   const [user, setUser] = useState(null);
   const [error, setError] = useState('');
-  const [stats, setStats] = useState({ count: 5, xp: 0 });
+  const [stats, setStats] = useState({ count: 12, xp: 0 }); // Updated to 12
   const [text, setText] = useState('');
   const [accent, setAccent] = useState('en-US');
   const [isRecording, setIsRecording] = useState(false);
@@ -36,7 +46,8 @@ export default function QuevedoVIP() {
     if (uStats) {
       const today = new Date().toISOString().split('T')[0];
       if (uStats.last_played_date !== today) {
-        const { data: updated } = await supabase.from('user_stats').update({ daily_count: 5, last_played_date: today }).eq('email', mail).select().single();
+        // Reset to 12 daily
+        const { data: updated } = await supabase.from('user_stats').update({ daily_count: 12, last_played_date: today }).eq('email', mail).select().single();
         uStats = updated;
       }
       setStats({ count: uStats.daily_count, xp: uStats.total_xp });
@@ -56,7 +67,8 @@ export default function QuevedoVIP() {
     
     const today = new Date().toISOString().split('T')[0];
     if (uStats && uStats.last_played_date !== today) {
-      const { data: updated } = await supabase.from('user_stats').update({ daily_count: 5, last_played_date: today }).eq('email', mail).select().single();
+      // Reset to 12 daily
+      const { data: updated } = await supabase.from('user_stats').update({ daily_count: 12, last_played_date: today }).eq('email', mail).select().single();
       uStats = updated;
     }
 
@@ -67,7 +79,7 @@ export default function QuevedoVIP() {
 
   const handleLogout = () => {
     localStorage.removeItem('quevedo_vip_user');
-    setUser(null); setStats({ count: 5, xp: 0 }); setFeedback(null); setText('');
+    setUser(null); setStats({ count: 12, xp: 0 }); setFeedback(null); setText('');
   };
 
   const loadRandomWord = async () => {
@@ -102,7 +114,6 @@ export default function QuevedoVIP() {
     window.speechSynthesis.speak(utterance);
   };
 
-  // --- THE NEW NATURAL GRADING ENGINE ---
   const startPractice = () => {
     const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Speech) { alert("⚠️ Microfone não suportado.\n\n📱 iPhone: Use o SAFARI.\n🤖 Android/PC: Use o CHROME."); return; }
@@ -122,17 +133,14 @@ export default function QuevedoVIP() {
 
     rec.onresult = async (e) => {
       const transcript = e.results[0][0].transcript;
-      
       const heardText = transcript.toLowerCase();
       const targetText = text.toLowerCase();
 
-      // 1. Aggressively clean the strings (removes ALL punctuation, even apostrophes)
       const cleanHeard = heardText.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
       const cleanTarget = targetText.replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
       
       let accuracy = 0;
 
-      // 2. Instant 100% if the cleaned strings match perfectly
       if (cleanHeard === cleanTarget) {
         accuracy = 100;
       } else {
@@ -144,7 +152,6 @@ export default function QuevedoVIP() {
         
         targetWords.forEach(tWord => { 
           const index = heardPool.findIndex(hWord => {
-            // 3. Substring Matching: Allows for "where" vs "wheres", or "challenge" vs "challenged"
             return hWord === tWord || 
                    (hWord.length >= 4 && tWord.includes(hWord)) || 
                    (tWord.length >= 4 && hWord.includes(tWord));
@@ -160,14 +167,11 @@ export default function QuevedoVIP() {
           baseAccuracy = (matchCount / targetWords.length) * 100;
         }
 
-        // 4. Lighter Babble Penalty (Only penalize 2% per extra word)
         if (heardPool.length > 0 && targetWords.length > 1) {
           baseAccuracy -= (heardPool.length * 2); 
         }
 
         accuracy = Math.round(baseAccuracy);
-
-        // 5. The Native Boost: If you scored over 80%, assume the rest was natural slang/speed and boost it.
         if (accuracy >= 80 && accuracy < 100) accuracy += 10;
         if (accuracy >= 60 && accuracy < 80) accuracy += 5;
       }
@@ -175,7 +179,6 @@ export default function QuevedoVIP() {
       if (accuracy < 0) accuracy = 0;
       if (accuracy > 100) accuracy = 100;
 
-      // Adjusted Star thresholds to be less punishing
       let stars = accuracy >= 85 ? 3 : accuracy >= 50 ? 2 : accuracy >= 25 ? 1 : 0;
       
       setFeedback({ stars, score: accuracy, heard: transcript });
@@ -199,7 +202,6 @@ export default function QuevedoVIP() {
     }
   };
 
-  // --- UNAUTHENTICATED VIEW ---
   if (!user) {
     return (
       <main style={{ background: '#f4f7f9', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
@@ -216,7 +218,8 @@ export default function QuevedoVIP() {
     );
   }
 
-  // --- AUTHENTICATED VIEW ---
+  const levelInfo = getLevelInfo(stats.xp);
+
   return (
     <main style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif', position: 'relative' }}>
       
@@ -225,15 +228,13 @@ export default function QuevedoVIP() {
           <div style={{ background: 'white', padding: '30px', borderRadius: '20px', maxWidth: '400px', width: '100%', position: 'relative', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
             <button onClick={() => setIsModalOpen(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#999' }}>✖</button>
             <h3 style={{ color: '#1a2a6c', marginTop: 0 }}>Como Funciona?</h3>
-            <ol style={{ paddingLeft: '20px', color: '#444', lineHeight: '1.6' }}>
-              <li style={{ marginBottom: '10px' }}><strong>Gere uma frase ou palavra</strong> usando os botões no topo.</li>
-              <li style={{ marginBottom: '10px' }}>Aperte <strong>Ouvir</strong> para escutar a pronúncia correta.</li>
-              <li style={{ marginBottom: '10px' }}>Escolha o sotaque que deseja praticar.</li>
-              <li style={{ marginBottom: '10px' }}>Aperte <strong>"Praticar Pronúncia"</strong>.</li>
-              <li style={{ marginBottom: '10px' }}>Quando terminar de falar, <strong>aperte o botão novamente para parar</strong>.</li>
-              <li>Ganhe estrelas e XP baseado na sua precisão!</li>
-            </ol>
-            <button onClick={() => setIsModalOpen(false)} style={{ width: '100%', background: '#ff6a00', color: 'white', border: 'none', padding: '12px', borderRadius: '10px', fontWeight: 'bold', marginTop: '15px', cursor: 'pointer' }}>Entendi!</button>
+            <ul style={{ paddingLeft: '20px', color: '#444', lineHeight: '1.6', fontSize: '0.95rem' }}>
+              <li style={{ marginBottom: '10px' }}><strong>Pratique:</strong> Gere uma frase/palavra ou digite a sua. Aperte em "Ouvir Pronúncia" para pegar o jeito.</li>
+              <li style={{ marginBottom: '10px' }}><strong>Grave:</strong> Aperte "Praticar Pronúncia". Fale de forma clara e natural. Quando terminar, aperte para <strong>parar</strong>.</li>
+              <li style={{ marginBottom: '10px' }}><strong>Energia:</strong> Você recebe ⚡12 energias por dia. Cada gravação consome 1.</li>
+              <li style={{ marginBottom: '10px' }}><strong>XP e Níveis:</strong> O algoritmo de Inteligência Artificial avalia sua fala. Você ganha até 30 XP por acerto. Junte XP para subir de nível!</li>
+            </ul>
+            <button onClick={() => setIsModalOpen(false)} style={{ width: '100%', background: '#ff6a00', color: 'white', border: 'none', padding: '12px', borderRadius: '10px', fontWeight: 'bold', marginTop: '15px', cursor: 'pointer' }}>Bora Praticar!</button>
           </div>
         </div>
       )}
@@ -251,8 +252,9 @@ export default function QuevedoVIP() {
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-           <p style={{ margin: 0, fontWeight: 'bold', color: '#1a2a6c' }}>XP: {stats.xp}</p>
-           <p style={{ margin: 0, color: '#ff6a00', fontWeight: 'bold' }}>Energia: {stats.count}/5</p>
+           <p style={{ margin: 0, fontWeight: '900', color: '#1a2a6c', fontSize: '1.2rem' }}>Nível {levelInfo.level}</p>
+           <p style={{ margin: 0, fontSize: '0.8rem', color: '#777', fontWeight: 'bold' }}>XP: {stats.xp} {levelInfo.nextTier !== "MAX" ? `/ ${levelInfo.nextTier}` : ''}</p>
+           <p style={{ margin: '5px 0 0 0', color: '#ff6a00', fontWeight: 'bold', fontSize: '0.9rem' }}>⚡ Energia: {stats.count}/12</p>
         </div>
       </header>
 
@@ -314,6 +316,9 @@ export default function QuevedoVIP() {
             <div style={{ fontSize: '2.5rem', color: '#ff6a00', letterSpacing: '5px' }}>{'★'.repeat(feedback.stars)}</div>
             <p style={{ fontWeight: 'bold', fontSize: '1.2rem', color: '#1a2a6c', margin: '10px 0' }}>Precisão: {feedback.score}%</p>
             <p style={{ fontSize: '0.9rem', color: '#666', fontStyle: 'italic', margin: 0 }}>Ouvimos: "{feedback.heard}"</p>
+            <p style={{ fontSize: '0.85rem', color: '#ff6a00', fontWeight: 'bold', marginTop: '10px' }}>
+               +{feedback.stars * 10} XP
+            </p>
           </div>
         )}
       </div>
