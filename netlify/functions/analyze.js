@@ -11,10 +11,10 @@ exports.handler = async (event) => {
     const pronConfig = new sdk.PronunciationAssessmentConfig(
       referenceText,
       sdk.PronunciationAssessmentGradingSystem.HundredMark,
+      // 🚨 THIS IS THE MAGIC KEY: We are asking for Phoneme data
       sdk.PronunciationAssessmentGranularity.Phoneme,
       true 
     );
-    // Force explicit prosody evaluation
     pronConfig.enableProsody = true;
 
     const audioBuffer = Buffer.from(audio, 'base64');
@@ -32,11 +32,19 @@ exports.handler = async (event) => {
 
     const assessmentResult = sdk.PronunciationAssessmentResult.fromResult(result);
 
-    // 🚨 THE FIX: Extract the EXACT accuracy score for every single word
-    const wordScores = assessmentResult.detailResult.Words.map(w => ({
-      word: w.Word,
-      accuracy: w.PronunciationAssessment ? w.PronunciationAssessment.AccuracyScore : 100
-    }));
+    // 🚨 THE UPGRADE: We now extract every single microscopic sound
+    const wordScores = assessmentResult.detailResult.Words.map(w => {
+      const phons = w.Phonemes ? w.Phonemes.map(p => ({
+        sound: p.Phoneme,
+        score: p.PronunciationAssessment ? p.PronunciationAssessment.AccuracyScore : 100
+      })) : [];
+
+      return {
+        word: w.Word,
+        accuracy: w.PronunciationAssessment ? w.PronunciationAssessment.AccuracyScore : 100,
+        phonemes: phons // Sending the X-Ray data to the app
+      };
+    });
 
     return {
       statusCode: 200,
@@ -45,7 +53,7 @@ exports.handler = async (event) => {
         fluency: Math.round(assessmentResult.fluencyScore),
         prosody: Math.round(assessmentResult.prosodyScore || assessmentResult.accuracyScore),
         heard: result.text,
-        words: wordScores // Sending the X-Ray data to the frontend
+        words: wordScores 
       })
     };
   } catch (error) {
