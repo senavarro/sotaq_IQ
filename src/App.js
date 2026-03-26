@@ -110,11 +110,9 @@ export default function SotaQApp() {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = accent; 
     utterance.rate = 0.85; 
-    
     const voices = window.speechSynthesis.getVoices();
     const targetVoice = voices.find(v => v.lang.replace('_', '-') === accent);
     if (targetVoice) utterance.voice = targetVoice;
-    
     window.speechSynthesis.speak(utterance);
   };
 
@@ -177,18 +175,24 @@ export default function SotaQApp() {
         if (!response.ok) throw new Error("Erro na API");
         const data = await response.json();
         
-        let rawScore = data.score || 0;
+        const rawAverage = data.score || 0;
         const wordData = data.words || [];
 
-        // 🚨 THE NEW STRICT MATH 🚨
-        // Any word below 85% is flagged as a hard error.
-        const strictErrors = wordData.filter(w => w.accuracy < 85);
+        // 🚨 WEAKEST LINK ALGORITHM 🚨
+        // We find the lowest scoring word. If you say "trot", this will find it.
+        const lowestWordScore = wordData.length > 0 ? Math.min(...wordData.map(w => w.accuracy)) : rawAverage;
 
-        let strictScore = rawScore;
+        // A 90% in Azure means "I understood you, but it sounded foreign." 
+        // We now flag ANYTHING below 92% as a critical error.
+        const strictErrors = wordData.filter(w => w.accuracy < 92);
+
+        // We blend the Azure average (30%) with your WORST word (70%).
+        // If average is 97, but "throat" is 80: (97*0.3) + (80*0.7) = 29.1 + 56 = 85.1
+        let strictScore = Math.round((rawAverage * 0.3) + (lowestWordScore * 0.7));
         
-        // Massive penalty: Deduct 12 points for EVERY mispronounced word.
+        // Final punishment: deduct 4 points for EVERY single error on top of that.
         if (strictErrors.length > 0) {
-            strictScore -= (strictErrors.length * 12); 
+            strictScore -= (strictErrors.length * 4); 
         }
         
         strictScore = Math.max(0, Math.min(100, strictScore)); 
@@ -196,12 +200,13 @@ export default function SotaQApp() {
         const stars = strictScore >= 85 ? 3 : strictScore >= 65 ? 2 : strictScore >= 35 ? 1 : 0;
         
         setFeedback({
-          score: strictScore,
+          score: strictScore, // Your new, unforgiving score
           stars: stars,
           fluency: data.fluency || 0,
           prosody: data.prosody || 0,
           heard: data.heard || "Não entendi nada.",
-          errors: strictErrors, // Now contains the specific words AND their low scores
+          errors: strictErrors,
+          worstWord: wordData.length > 0 ? wordData.reduce((prev, curr) => prev.accuracy < curr.accuracy ? prev : curr) : null,
           msg: strictScore >= 85 ? "Nativo! 🔥" : strictScore >= 65 ? "Bom sotaque! 🌟" : "Forte sotaque detectado! 🐢"
         });
 
@@ -337,6 +342,12 @@ export default function SotaQApp() {
                     </span>
                   ))}
                 </div>
+                {/* EXPOSE THE WEAKEST LINK */}
+                {feedback.worstWord && (
+                  <p style={{ fontSize: '0.75rem', color: '#b91c1c', marginTop: '10px', fontWeight: 'bold' }}>
+                    Sua pior palavra: "{feedback.worstWord.word}" derrubou sua nota.
+                  </p>
+                )}
               </div>
             ) : (
                <p style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#10b981', margin: '10px 0 0 0' }}>Nenhum erro detectado! 🎯</p>
