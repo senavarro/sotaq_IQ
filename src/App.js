@@ -175,16 +175,37 @@ export default function SotaQApp() {
         if (!response.ok) throw new Error("Erro na API");
         const data = await response.json();
         
-        // 🚨 NaN PROTECTION: Forcing everything into strict Numbers, defaulting to 0
         const rawAverage = Number(data.score) || 0;
         const fluency = Number(data.fluency) || 0;
         const prosody = Number(data.prosody) || 0;
         const wordData = Array.isArray(data.words) ? data.words : [];
+        const heardStr = data.heard || "";
+
+        // 🚨 SILENCE GUARD: If there are no words, skip the math entirely.
+        if (wordData.length === 0 || heardStr.trim() === "") {
+            setFeedback({
+                score: 0,
+                stars: 0,
+                fluency: 0,
+                prosody: 0,
+                heard: "Nenhuma voz detectada.",
+                errors: [],
+                worstWord: null,
+                msg: "Não ouvimos você! Fale mais perto do microfone. 🛑"
+            });
+            
+            // Still deducts energy (they used a server request!)
+            const newCount = stats.count - 1; 
+            setStats({ count: newCount, xp: stats.xp });
+            await supabase.from('user_stats').update({ daily_count: newCount }).eq('email', user);
+            
+            setIsProcessing(false);
+            return;
+        }
 
         let lowestWordScore = rawAverage;
         let worstWord = null;
 
-        // 🚨 WEAKEST LINK REFINED: Safely extract numbers
         if (wordData.length > 0) {
           worstWord = wordData.reduce((prev, curr) => {
               const prevAcc = Number(prev.accuracy) || 100;
@@ -194,19 +215,14 @@ export default function SotaQApp() {
           lowestWordScore = Number(worstWord.accuracy) || rawAverage;
         }
 
-        // 🚨 THE IRONCLAD MATH: 
-        // 40% Raw Azure Average + 40% Your Worst Word + 20% Fluency (Punishes "emmm")
         let strictScore = Math.round((rawAverage * 0.4) + (lowestWordScore * 0.4) + (fluency * 0.2));
         
-        // Find errors (now using 90% as the threshold for an "error")
         const strictErrors = wordData.filter(w => (Number(w.accuracy) || 100) < 90);
         
-        // Deduct 5 points per mispronounced word
         if (strictErrors.length > 0) {
             strictScore -= (strictErrors.length * 5); 
         }
         
-        // Final NaN and Bounds Check
         if (isNaN(strictScore)) strictScore = 0;
         strictScore = Math.max(0, Math.min(100, strictScore)); 
         
@@ -355,18 +371,18 @@ export default function SotaQApp() {
                     </span>
                   ))}
                 </div>
-                {/* SAFEGUARDED WEAKEST LINK */}
                 {feedback.worstWord && feedback.worstWord.word && (
                   <p style={{ fontSize: '0.75rem', color: '#b91c1c', marginTop: '10px', fontWeight: 'bold' }}>
                     Sua pior palavra: "{feedback.worstWord.word}" derrubou sua nota.
                   </p>
                 )}
               </div>
-            ) : (
+            ) : feedback.score > 0 ? (
+               /* 🚨 THE SILENCE FIX: Only congratulate them if the score is actually above 0 */
                <p style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#10b981', margin: '10px 0 0 0' }}>Nenhum erro detectado! 🎯</p>
-            )}
+            ) : null}
             
-            <p style={{ fontWeight: '800', margin: '15px 0 0 0', color: feedback.score >= 85 ? '#10b981' : '#f59e0b' }}>{feedback.msg}</p>
+            <p style={{ fontWeight: '800', margin: '15px 0 0 0', color: feedback.score >= 85 ? '#10b981' : '#ef4444' }}>{feedback.msg}</p>
           </div>
         )}
 
