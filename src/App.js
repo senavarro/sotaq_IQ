@@ -154,6 +154,15 @@ export default function SotaQApp() {
     }
   };
 
+  // 🚨 THE MISSING FUNCTION IS BACK! 🚨
+  const stopRecording = () => {
+    if (recordingTimeout) clearTimeout(recordingTimeout);
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+    }
+    setIsRecording(false);
+  };
+
   const analyzeSpeech = async (blob) => {
     const reader = new FileReader();
     reader.readAsDataURL(blob);
@@ -174,12 +183,11 @@ export default function SotaQApp() {
         let errors = data.mispronunciations || [];
 
         // 🚨 RUTHLESS ACCENT MATH 🚨
-        // We blend 70% Accuracy with 30% Rhythm, then subtract 5 points for every bad word.
         let strictScore = Math.round((rawScore * 0.7) + (prosody * 0.3));
         if (errors.length > 0) {
             strictScore -= (errors.length * 5); 
         }
-        strictScore = Math.max(0, Math.min(100, strictScore)); // Keep it between 0-100
+        strictScore = Math.max(0, Math.min(100, strictScore)); 
         
         const stars = strictScore >= 85 ? 3 : strictScore >= 65 ? 2 : strictScore >= 35 ? 1 : 0;
         
@@ -196,7 +204,7 @@ export default function SotaQApp() {
         if (stars === 3) confetti();
         
         const newXP = stats.xp + (stars * 10);
-        const newCount = stats.count - 1; // 1 Energy deducted per recording!
+        const newCount = stats.count - 1; // Deduct energy
         setStats({ count: newCount, xp: newXP });
         await supabase.from('user_stats').update({ daily_count: newCount, total_xp: newXP }).eq('email', user);
         
@@ -246,7 +254,7 @@ export default function SotaQApp() {
   return (
     <div style={{ background: '#f0f4f8', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
       
-      {/* 📜 NEW RULES MODAL */}
+      {/* 📜 RULES MODAL */}
       {showRules && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ background: 'white', padding: '30px', borderRadius: '24px', maxWidth: '400px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
