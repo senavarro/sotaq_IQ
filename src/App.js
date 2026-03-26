@@ -252,19 +252,38 @@ export default function SotaQApp() {
   return (
     <div style={{ background: '#f0f4f8', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
       
-      {showRules && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: 'white', padding: '30px', borderRadius: '24px', maxWidth: '400px', width: '100%' }}>
-            <h3 style={{ marginTop: 0, color: '#1a2a6c', fontWeight: '900' }}>📖 Regras</h3>
-            <ul style={{ paddingLeft: '20px', fontSize: '0.9rem', color: '#475569' }}>
-              <li>⚡ 1 gravação = 1 vida.</li>
-              <li>🎯 Nota baseada em sílabas microscópicas.</li>
-              <li>💎 Versão Gratuita: Limite de 7 vidas/dia.</li>
-            </ul>
-            <button onClick={() => setShowRules(false)} style={{ width: '100%', padding: '15px', background: '#ff6a00', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800' }}>OK</button>
-          </div>
+    {showRules && (
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+        <div style={{ background: 'white', padding: '30px', borderRadius: '24px', maxWidth: '400px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+          <h3 style={{ marginTop: 0, color: '#1a2a6c', fontWeight: '900', fontSize: '1.4rem' }}>📖 Como funciona o SotaQ?</h3>
+          
+          <ul style={{ paddingLeft: '20px', color: '#475569', fontSize: '0.9rem', lineHeight: '1.6', margin: '20px 0' }}>
+            <li style={{ marginBottom: '10px' }}>
+              ⚡ <strong>7 Vidas:</strong> Você tem 7 tentativas por dia. <strong>Cada gravação consome 1 vida</strong>, independente do resultado. Suas vidas resetam à meia-noite!
+            </li>
+            <li style={{ marginBottom: '10px' }}>
+              ⏱️ <strong>Limite de 5s:</strong> Focamos em frases curtas e diretas. Se a gravação passar de 5 segundos, ela será cortada automaticamente.
+            </li>
+            <li style={{ marginBottom: '10px' }}>
+              🌎 <strong>Americano vs Britânico:</strong> A régua da IA muda completamente dependendo do sotaque escolhido. Escolha um e tente ser fiel aos fonemas da região!
+            </li>
+            <li style={{ marginBottom: '10px' }}>
+              🎯 <strong>Feedback de Raio-X:</strong> Nossa IA não avalia apenas se você "falou certo", mas sim a precisão das suas sílabas, seu ritmo e sua fluência.
+            </li>
+            <li>
+              🔊 <strong>Ouvir:</strong> Use o botão de áudio para calibrar seu ouvido antes de gastar sua energia gravando.
+            </li>
+          </ul>
+    
+          <button 
+            onClick={() => setShowRules(false)} 
+            style={{ width: '100%', padding: '15px', background: '#ff6a00', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '1rem', cursor: 'pointer' }}
+          >
+            ENTENDI, VAMOS LÁ!
+          </button>
         </div>
-      )}
+      </div>
+    )}
 
       {/* HEADER WITH LOGOUT */}
       <nav style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '450px', margin: '0 auto' }}>
