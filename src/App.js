@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import confetti from 'canvas-confetti';
-// ONLY importing phrases now to prevent Netlify errors
 import { curatedPhrases } from './phraseBank'; 
 
 const getLevelInfo = (xp) => {
@@ -138,39 +137,48 @@ export default function QuevedoVIP() {
       const cleanHeard = transcript.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
       const cleanTarget = text.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
       
-      const targetWords = cleanTarget.split(' ').filter(w => w);
-      const heardWords = cleanHeard.split(' ').filter(w => w);
+      let finalScore = 0;
 
-      let matchCount = 0;
-      let heardPool = [...heardWords]; 
-      
-      targetWords.forEach(tWord => { 
-        const index = heardPool.indexOf(tWord);
-        if (index !== -1) { matchCount++; heardPool.splice(index, 1); }
-      });
+      // --- THE NATIVE GATEKEEPER ALGORITHM ---
+      if (cleanHeard === cleanTarget) {
+        // EXACT MATCH: They got all the words. Now we judge the accent strictly by AI doubt.
+        if (confidence >= 0.96) {
+          finalScore = Math.round(95 + ((confidence - 0.96) * 125)); // Perfect native (95-100%)
+        } else if (confidence >= 0.90) {
+          finalScore = Math.round(80 + ((confidence - 0.90) * 150)); // Good, but slight accent (80-89%)
+        } else if (confidence >= 0.80) {
+          finalScore = Math.round(60 + ((confidence - 0.80) * 200)); // Wrong accent / Muddy (60-79%)
+        } else {
+          finalScore = Math.round(confidence * 60); // Guessed right, but sounded terrible (< 50%)
+        }
+      } else {
+        // NOT AN EXACT MATCH: The accent caused a spelling mistake.
+        const targetWords = cleanTarget.split(' ').filter(w => w);
+        const heardWords = cleanHeard.split(' ').filter(w => w);
 
-      // BASE SCORE
-      let baseScore = targetWords.length > 0 ? (matchCount / targetWords.length) * 100 : 0;
-      
-      // 1. CHARACTER-LEVEL PENALTY (Catches weird accent vowel swallowing)
-      let charDiff = Math.abs(cleanHeard.length - cleanTarget.length);
-      baseScore -= (charDiff * 2); // Lose 2% for every missing/extra letter
-      
-      // 2. PHANTOM WORD PENALTY
-      if (heardWords.length > targetWords.length) {
-        baseScore -= ((heardWords.length - targetWords.length) * 15);
+        let matchCount = 0;
+        let heardPool = [...heardWords]; 
+        
+        targetWords.forEach(tWord => { 
+          const index = heardPool.indexOf(tWord);
+          if (index !== -1) { matchCount++; heardPool.splice(index, 1); }
+        });
+
+        let baseScore = targetWords.length > 0 ? (matchCount / targetWords.length) * 100 : 0;
+        
+        let charDiff = Math.abs(cleanHeard.length - cleanTarget.length);
+        baseScore -= charDiff; 
+        
+        if (heardWords.length > targetWords.length) {
+          baseScore -= ((heardWords.length - targetWords.length) * 10); 
+        }
+
+        baseScore *= Math.pow(confidence, 2.2); 
+        finalScore = Math.round(Math.max(0, baseScore));
+        
+        // THE PERFECTION CAP: You cannot score higher than 85% if there's a single mistake.
+        if (finalScore > 85) finalScore = 85; 
       }
-
-      // 3. THE "ACOUSTIC FRICTION" MULTIPLIER (Power of 6)
-      // If you speak American into a British AI, confidence drops to ~0.92. 
-      // 0.92 ^ 6 = 0.60. Your score is instantly crushed by 40%.
-      if (confidence < 0.98) {
-        baseScore *= Math.pow(confidence, 6); 
-      }
-
-      let finalScore = Math.round(Math.max(0, baseScore));
-      // Give a tiny bump if they literally got it 100% perfect on text and confidence
-      if (cleanHeard === cleanTarget && confidence > 0.96) finalScore = 100;
 
       let stars = finalScore >= 90 ? 3 : finalScore >= 70 ? 2 : finalScore >= 40 ? 1 : 0;
       
