@@ -23,7 +23,7 @@ export default function QuevedoVIP() {
   const [loginError, setLoginError] = useState('');
   const [stats, setStats] = useState({ count: 12, xp: 0 });
   const [text, setText] = useState('');
-  const [translation, setTranslation] = useState(''); // NEW: Translation State
+  const [translation, setTranslation] = useState(''); 
   const [accent, setAccent] = useState('en-US');
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false); 
@@ -75,16 +75,13 @@ export default function QuevedoVIP() {
 
   const handleTextChange = (newText) => {
     setText(newText);
-    setTranslation(''); // Clear translation if they type manually
+    setTranslation(''); 
     if (newText !== completedText) setCompletedText('');
   };
 
-  // NEW: Robust Loader for Translations
   const loadRandomPhrase = () => {
     setFeedback(null); setCompletedText('');
     const item = curatedPhrases[Math.floor(Math.random() * curatedPhrases.length)];
-    
-    // Checks if your phraseBank uses objects {en: "...", pt: "..."} or just strings
     if (typeof item === 'object' && item !== null) {
       setText(item.en || item.text || '');
       setTranslation(item.pt || item.translation || '');
@@ -136,44 +133,49 @@ export default function QuevedoVIP() {
       const cleanHeard = transcript.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
       const cleanTarget = text.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
       
-      let finalScore = 0;
+      const targetWords = cleanTarget.split(' ').filter(w => w);
+      const heardWords = cleanHeard.split(' ').filter(w => w);
 
-      if (cleanHeard === cleanTarget) {
-        if (confidence >= 0.96) finalScore = Math.round(95 + ((confidence - 0.96) * 125)); 
-        else if (confidence >= 0.90) finalScore = Math.round(80 + ((confidence - 0.90) * 150)); 
-        else if (confidence >= 0.80) finalScore = Math.round(60 + ((confidence - 0.80) * 200)); 
-        else finalScore = Math.round(confidence * 60); 
-      } else {
-        const targetWords = cleanTarget.split(' ').filter(w => w);
-        const heardWords = cleanHeard.split(' ').filter(w => w);
+      let matchCount = 0;
+      let heardPool = [...heardWords]; 
+      targetWords.forEach(tWord => { 
+        const index = heardPool.indexOf(tWord);
+        if (index !== -1) { matchCount++; heardPool.splice(index, 1); }
+      });
 
-        let matchCount = 0;
-        let heardPool = [...heardWords]; 
-        targetWords.forEach(tWord => { 
-          const index = heardPool.indexOf(tWord);
-          if (index !== -1) { matchCount++; heardPool.splice(index, 1); }
-        });
+      // 1. Calculate base text match percentage
+      let baseScore = targetWords.length > 0 ? (matchCount / targetWords.length) * 100 : 0;
+      
+      // 2. Minor penalty for missing/extra letters
+      let charDiff = Math.abs(cleanHeard.length - cleanTarget.length);
+      baseScore -= charDiff; 
+      
+      // 3. Penalty for adding extra words (babbling)
+      if (heardWords.length > targetWords.length) {
+        baseScore -= ((heardWords.length - targetWords.length) * 10); 
+      }
+      
+      // --- THE UNCHEATABLE CURVE ---
+      // This mathematically destroys fake accents even if they pronounce the right words.
+      if (confidence < 0.99) {
+        baseScore *= Math.pow(confidence, 4.5); 
+      }
+      
+      let finalScore = Math.round(Math.max(0, baseScore));
 
-        let baseScore = targetWords.length > 0 ? (matchCount / targetWords.length) * 100 : 0;
-        let charDiff = Math.abs(cleanHeard.length - cleanTarget.length);
-        baseScore -= charDiff; 
-        
-        if (heardWords.length > targetWords.length) baseScore -= ((heardWords.length - targetWords.length) * 10); 
-        baseScore *= Math.pow(confidence, 2.2); 
-        
-        finalScore = Math.round(Math.max(0, baseScore));
-        if (finalScore > 85) finalScore = 85; 
+      // Only give a pure 100 if it was literally legendary (0.99+ confidence)
+      if (cleanHeard === cleanTarget && confidence >= 0.99) {
+        finalScore = 100;
       }
 
       let stars = finalScore >= 90 ? 3 : finalScore >= 70 ? 2 : finalScore >= 40 ? 1 : 0;
       
-      // NEW: Intelligent Feedback Messaging
       let aiMessage = "";
-      if (finalScore >= 95) aiMessage = "Perfeito! Sotaque impecável. 🔥";
-      else if (finalScore >= 85) aiMessage = "Excelente! Quase um nativo. 🌟";
-      else if (finalScore >= 70) aiMessage = "Muito bom, mas a IA notou um sotaque forte. Atenção aos detalhes.";
+      if (finalScore >= 90) aiMessage = "Perfeito! Sotaque impecável. 🔥";
+      else if (finalScore >= 75) aiMessage = "Excelente! Quase um nativo. 🌟";
+      else if (finalScore >= 60) aiMessage = "Muito bom, mas a IA notou um sotaque forte. Atenção aos detalhes.";
       else if (finalScore >= 40) aiMessage = "Pronúncia confusa. Foque nas vogais e no ritmo. 🐢";
-      else aiMessage = "A IA não conseguiu entender. Tente falar mais devagar.";
+      else aiMessage = "A IA não conseguiu entender o sotaque. Tente novamente.";
 
       setTimeout(async () => {
         if (stars >= 3) setCompletedText(text);
@@ -206,7 +208,6 @@ export default function QuevedoVIP() {
     }
   };
 
-  // --- NEW PREMIUM LOGIN SCREEN ---
   if (!user) {
     return (
       <main style={{ background: 'linear-gradient(135deg, #0f172a, #1a2a6c)', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
@@ -231,11 +232,9 @@ export default function QuevedoVIP() {
 
   const levelInfo = getLevelInfo(stats.xp);
 
-  // --- NEW PREMIUM APP UI ---
   return (
     <main style={{ background: '#f8fafc', minHeight: '100vh', fontFamily: 'system-ui, sans-serif', paddingBottom: '60px' }}>
       
-      {/* MODALS REMAIN THE SAME, OMITTED FROM EXPLANATION FOR BREVITY BUT INCLUDED IN CODE */}
       {isModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(15, 23, 42, 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '15px', backdropFilter: 'blur(8px)', boxSizing: 'border-box' }}>
           <div style={{ background: 'white', padding: '28px', borderRadius: '28px', maxWidth: '420px', width: '100%', position: 'relative', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)' }}>
@@ -263,7 +262,6 @@ export default function QuevedoVIP() {
         </div>
       )}
 
-      {/* HEADER - MINIMALIST */}
       <header style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '800px', margin: '0 auto' }}>
         <div>
           <h1 style={{ color: '#1a2a6c', margin: 0, fontSize: '1.2rem', fontWeight: '900', letterSpacing: '-0.5px' }}>SotaQ AI</h1>
@@ -282,7 +280,6 @@ export default function QuevedoVIP() {
 
       <div style={{ maxWidth: '800px', margin: '0 auto', padding: '0 20px' }}>
         
-        {/* LEVEL PROGRESS */}
         <div style={{ marginBottom: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '8px' }}>
             <p style={{ margin: 0, fontWeight: '900', color: '#0f172a', fontSize: '1rem' }}>Lvl {levelInfo.level}</p>
@@ -295,13 +292,11 @@ export default function QuevedoVIP() {
           </div>
         </div>
 
-        {/* ACCENT TOGGLE */}
         <div style={{ display: 'flex', background: 'white', borderRadius: '16px', padding: '6px', marginBottom: '20px', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
           <button onClick={() => setAccent('en-US')} disabled={isProcessing} style={{ flex: 1, padding: '10px', borderRadius: '12px', background: accent === 'en-US' ? '#1a2a6c' : 'transparent', color: accent === 'en-US' ? 'white' : '#64748b', fontWeight: '800', border: 'none', cursor: isProcessing ? 'not-allowed' : 'pointer', transition: 'all 0.3s ease', fontSize: '0.9rem' }}>🇺🇸 American</button>
           <button onClick={() => setAccent('en-GB')} disabled={isProcessing} style={{ flex: 1, padding: '10px', borderRadius: '12px', background: accent === 'en-GB' ? '#1a2a6c' : 'transparent', color: accent === 'en-GB' ? 'white' : '#64748b', fontWeight: '800', border: 'none', cursor: isProcessing ? 'not-allowed' : 'pointer', transition: 'all 0.3s ease', fontSize: '0.9rem' }}>🇬🇧 British</button>
         </div>
 
-        {/* MAIN AI CARD */}
         <div style={{ background: 'white', borderRadius: '24px', padding: '24px', boxShadow: '0 10px 40px -10px rgba(0,0,0,0.08)', marginBottom: '24px', position: 'relative' }}>
           
           <button onClick={loadRandomPhrase} disabled={isRecording || isProcessing} style={{ position: 'absolute', top: '-16px', left: '50%', transform: 'translateX(-50%)', background: '#ff6a00', color: 'white', border: 'none', padding: '8px 20px', borderRadius: '50px', fontWeight: '900', cursor: (isRecording || isProcessing) ? 'not-allowed' : 'pointer', fontSize: '0.85rem', boxShadow: '0 4px 10px rgba(255, 106, 0, 0.3)', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -316,7 +311,6 @@ export default function QuevedoVIP() {
             style={{ width: '100%', minHeight: '80px', border: 'none', fontSize: '1.4rem', fontWeight: '700', color: '#0f172a', textAlign: 'center', resize: 'none', background: 'transparent', outline: 'none', marginTop: '16px', fontFamily: 'inherit' }}
           />
 
-          {/* NEW: Translation Block */}
           {translation && (
             <p style={{ textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.95rem', margin: '0 0 20px 0', fontWeight: '500' }}>
               🇧🇷 "{translation}"
@@ -331,7 +325,6 @@ export default function QuevedoVIP() {
           )}
         </div>
 
-        {/* FEEDBACK BLOCK */}
         {feedback && !isProcessing && (
           <div style={{ textAlign: 'center', padding: '24px', background: feedback.stars === 3 ? '#ecfdf5' : feedback.stars === 2 ? '#fffbeb' : '#fef2f2', borderRadius: '24px', marginBottom: '24px', border: `1px solid ${feedback.stars === 3 ? '#a7f3d0' : feedback.stars === 2 ? '#fde68a' : '#fecaca'}` }}>
             <div style={{ fontSize: '2.5rem', color: feedback.stars === 3 ? '#10b981' : feedback.stars === 2 ? '#f59e0b' : '#ef4444', marginBottom: '8px' }}>
@@ -343,7 +336,6 @@ export default function QuevedoVIP() {
           </div>
         )}
 
-        {/* MAIN ACTION BUTTON */}
         <button 
           onClick={handleMainAction} 
           disabled={isProcessing || (!isRecording && !text.trim() && !isCompleted)}
