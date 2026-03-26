@@ -19,7 +19,6 @@ const getLevelInfo = (xp) => {
   return { level: isMax ? 10 : level, currentMin, nextTier: isMax ? "MAX" : nextTier, progress };
 };
 
-// CRITICAL FIX: Converts Browser WebM to strict Azure WAV (PCM 16kHz)
 const convertToWav = async (blob) => {
   const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
   const arrayBuffer = await blob.arrayBuffer();
@@ -56,6 +55,7 @@ const convertToWav = async (blob) => {
 export default function SotaQApp() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false); // FIX: Loading state
   const [stats, setStats] = useState({ count: MAX_ENERGY, xp: 0 });
   const [text, setText] = useState('');
   const [translation, setTranslation] = useState('');
@@ -73,21 +73,27 @@ export default function SotaQApp() {
   }, []);
 
   const restoreSession = async (mail) => {
-    let { data: uStats } = await supabase.from('user_stats').select('*').eq('email', mail).single();
-    if (uStats) {
-      const today = new Date().toISOString().split('T')[0];
-      if (uStats.last_played_date !== today) {
-        const { data: updated } = await supabase.from('user_stats')
-          .update({ daily_count: MAX_ENERGY, last_played_date: today })
-          .eq('email', mail).select().single();
-        uStats = updated;
+    setIsLoggingIn(true);
+    try {
+      let { data: uStats } = await supabase.from('user_stats').select('*').eq('email', mail).single();
+      if (uStats) {
+        const today = new Date().toISOString().split('T')[0];
+        if (uStats.last_played_date !== today) {
+          const { data: updated } = await supabase.from('user_stats')
+            .update({ daily_count: MAX_ENERGY, last_played_date: today })
+            .eq('email', mail).select().single();
+          uStats = updated;
+        }
+        setStats({ count: Math.min(uStats.daily_count, MAX_ENERGY), xp: uStats.total_xp });
+        setUser(mail);
+        localStorage.setItem('quevedo_vip_user', mail);
+      } else {
+        alert("Usuário não encontrado. Verifique seu email.");
       }
-      // FIX: Force max energy to 7 even if old database had 12
-      setStats({ count: Math.min(uStats.daily_count, MAX_ENERGY), xp: uStats.total_xp });
-      setUser(mail);
-      localStorage.setItem('quevedo_vip_user', mail);
-    } else {
-      alert("Usuário não encontrado.");
+    } catch (err) {
+      alert("Erro na conexão com o banco de dados.");
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -98,12 +104,18 @@ export default function SotaQApp() {
     setTranslation(typeof item === 'object' ? item.pt : '');
   };
 
-  // RESTORED: Audio Playback Feature
+  // THE FIX: Forcing Browser Voices
   const playAudio = () => {
     if (!text) return;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = accent; 
-    utterance.rate = 0.85; // Slightly slower for learning
+    utterance.rate = 0.85; 
+    
+    const voices = window.speechSynthesis.getVoices();
+    // Search specifically for a voice that matches the selected region
+    const targetVoice = voices.find(v => v.lang.replace('_', '-') === accent);
+    if (targetVoice) utterance.voice = targetVoice;
+    
     window.speechSynthesis.speak(utterance);
   };
 
@@ -121,7 +133,7 @@ export default function SotaQApp() {
       recorder.onstop = async () => {
         setIsProcessing(true);
         const webmBlob = new Blob(chunks, { type: 'audio/webm' });
-        const wavBlob = await convertToWav(webmBlob); // FIX: Convert to pure WAV
+        const wavBlob = await convertToWav(webmBlob); 
         await analyzeSpeech(wavBlob);
         stream.getTracks().forEach(track => track.stop()); 
       };
@@ -193,22 +205,37 @@ export default function SotaQApp() {
     };
   };
 
-  // FIX: Polished Login Page
   if (!user) {
     return (
-      <div style={{ background: '#f0f4f8', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif' }}>
-        <div style={{ background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', textAlign: 'center', maxWidth: '400px', width: '90%' }}>
-          <h1 style={{ color: '#1a2a6c', fontWeight: '900', fontSize: '2rem', marginBottom: '10px' }}>SotaQ AI</h1>
-          <p style={{ color: '#64748b', marginBottom: '30px', fontSize: '0.95rem' }}>Acesse sua conta para treinar seu sotaque.</p>
+      <div style={{ background: '#f0f4f8', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif', padding: '20px' }}>
+        <div style={{ background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', width: '100%', maxWidth: '400px' }}>
+          <div style={{ textAlign: 'center' }}>
+            <h1 style={{ color: '#1a2a6c', fontWeight: '900', fontSize: '2.2rem', margin: '0 0 5px 0' }}>SotaQ AI</h1>
+            <p style={{ color: '#64748b', marginBottom: '25px', fontSize: '0.95rem' }}>Acesse sua conta para treinar.</p>
+          </div>
+          
+          {/* THE FIX: Rules Section Added Here */}
+          <div style={{ marginBottom: '25px', background: '#f8fafc', padding: '15px', borderRadius: '12px', fontSize: '0.85rem', color: '#475569', border: '1px solid #e2e8f0' }}>
+            <p style={{ fontWeight: 'bold', margin: '0 0 8px 0', color: '#0f172a' }}>📜 Como funciona:</p>
+            <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.6' }}>
+              <li>⚡ <strong>7 Vidas</strong> recarregadas diariamente.</li>
+              <li>⏱️ Gravações de até <strong>5 segundos</strong>.</li>
+              <li>🎯 A IA da Microsoft avalia Precisão, Ritmo e Fluência com sotaque.</li>
+            </ul>
+          </div>
+
           <input 
             type="email" value={email} onChange={(e) => setEmail(e.target.value)} 
             placeholder="Seu email cadastrado..." 
-            style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', marginBottom: '20px', outline: 'none' }}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', marginBottom: '15px', outline: 'none' }}
           />
           <button 
             onClick={() => restoreSession(email)} 
-            style={{ width: '100%', background: '#ff6a00', color: 'white', padding: '15px', borderRadius: '12px', border: 'none', fontWeight: '800', fontSize: '1.1rem', cursor: 'pointer', transition: '0.3s' }}>
-            ENTRAR
+            disabled={isLoggingIn || !email}
+            style={{ 
+              width: '100%', background: isLoggingIn ? '#cbd5e1' : '#ff6a00', color: 'white', padding: '15px', borderRadius: '12px', border: 'none', fontWeight: '800', fontSize: '1.1rem', cursor: isLoggingIn ? 'not-allowed' : 'pointer', transition: '0.3s' 
+            }}>
+            {isLoggingIn ? 'ENTRANDO...' : 'ENTRAR'}
           </button>
         </div>
       </div>
@@ -237,15 +264,15 @@ export default function SotaQApp() {
           </div>
         </div>
 
+        {/* THE FIX: Translated Buttons */}
         <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '16px', padding: '4px', marginBottom: '20px' }}>
-          <button onClick={() => setAccent('en-US')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: accent === 'en-US' ? '#1a2a6c' : 'transparent', color: accent === 'en-US' ? 'white' : '#64748b', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}>🇺🇸 USA Accent</button>
-          <button onClick={() => setAccent('en-GB')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: accent === 'en-GB' ? '#1a2a6c' : 'transparent', color: accent === 'en-GB' ? 'white' : '#64748b', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}>🇬🇧 UK Accent</button>
+          <button onClick={() => setAccent('en-US')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: accent === 'en-US' ? '#1a2a6c' : 'transparent', color: accent === 'en-US' ? 'white' : '#64748b', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}>🇺🇸 Americano</button>
+          <button onClick={() => setAccent('en-GB')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: accent === 'en-GB' ? '#1a2a6c' : 'transparent', color: accent === 'en-GB' ? 'white' : '#64748b', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}>🇬🇧 Britânico</button>
         </div>
 
         <div style={{ background: 'white', borderRadius: '30px', padding: '30px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.05)', textAlign: 'center', marginBottom: '20px' }}>
            <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '20px' }}>
              <button onClick={loadRandomPhrase} style={{ background: '#ff6a00', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer' }}>🎲 NOVA FRASE</button>
-             {/* RESTORED: Play Audio Button */}
              <button onClick={playAudio} disabled={!text} style={{ background: '#1a2a6c', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer', opacity: text ? 1 : 0.5 }}>🔊 OUVIR</button>
            </div>
            
