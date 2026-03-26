@@ -6,8 +6,6 @@ import { curatedPhrases } from './phraseBank';
 const MAX_ENERGY = 7;
 const MAX_RECORDING_TIME = 5000;
 
-// 🚨 NEW: The Phonetic Teacher Dictionary
-// Azure returns IPA phonetic symbols. We map the hardest ones for Latinos.
 const getPhonemeTip = (phoneme) => {
   const tips = {
     'θ': "Língua entre os dentes soprando o ar (não é som de 'f' nem 's').", // th in throat
@@ -232,7 +230,6 @@ export default function SotaQApp() {
             setIsProcessing(false); return;
         }
 
-        // 🚨 NEW X-RAY MATH: We extract all phonemes from the sentence
         let allPhonemes = [];
         wordData.forEach(w => {
             if (w.phonemes) {
@@ -246,10 +243,10 @@ export default function SotaQApp() {
             lowestPhonemeScore = worstPhonemeObj.score;
         }
 
-        // We anchor the score to the WORST SYLLABLE, not just the worst word.
+
         let strictScore = Math.round((rawAverage * 0.3) + (lowestPhonemeScore * 0.5) + (fluency * 0.2));
         
-        // Find errors based on words that have bad phonemes inside them
+
         const strictErrors = wordData.filter(w => (Number(w.accuracy) || 100) < 90).map(w => {
             let worstPhoneme = null;
             if (w.phonemes && w.phonemes.length > 0) {
