@@ -9,6 +9,7 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^13.5.0",
     "canvas-confetti": "^1.9.4",
+    "microsoft-cognitiveservices-speech-sdk": "^1.42.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-scripts": "5.0.1",
