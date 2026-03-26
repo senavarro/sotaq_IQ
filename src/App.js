@@ -175,38 +175,51 @@ export default function SotaQApp() {
         if (!response.ok) throw new Error("Erro na API");
         const data = await response.json();
         
-        const rawAverage = data.score || 0;
-        const wordData = data.words || [];
+        // 🚨 NaN PROTECTION: Forcing everything into strict Numbers, defaulting to 0
+        const rawAverage = Number(data.score) || 0;
+        const fluency = Number(data.fluency) || 0;
+        const prosody = Number(data.prosody) || 0;
+        const wordData = Array.isArray(data.words) ? data.words : [];
 
-        // 🚨 WEAKEST LINK ALGORITHM 🚨
-        // We find the lowest scoring word. If you say "trot", this will find it.
-        const lowestWordScore = wordData.length > 0 ? Math.min(...wordData.map(w => w.accuracy)) : rawAverage;
+        let lowestWordScore = rawAverage;
+        let worstWord = null;
 
-        // A 90% in Azure means "I understood you, but it sounded foreign." 
-        // We now flag ANYTHING below 92% as a critical error.
-        const strictErrors = wordData.filter(w => w.accuracy < 92);
+        // 🚨 WEAKEST LINK REFINED: Safely extract numbers
+        if (wordData.length > 0) {
+          worstWord = wordData.reduce((prev, curr) => {
+              const prevAcc = Number(prev.accuracy) || 100;
+              const currAcc = Number(curr.accuracy) || 100;
+              return prevAcc < currAcc ? prev : curr;
+          });
+          lowestWordScore = Number(worstWord.accuracy) || rawAverage;
+        }
 
-        // We blend the Azure average (30%) with your WORST word (70%).
-        // If average is 97, but "throat" is 80: (97*0.3) + (80*0.7) = 29.1 + 56 = 85.1
-        let strictScore = Math.round((rawAverage * 0.3) + (lowestWordScore * 0.7));
+        // 🚨 THE IRONCLAD MATH: 
+        // 40% Raw Azure Average + 40% Your Worst Word + 20% Fluency (Punishes "emmm")
+        let strictScore = Math.round((rawAverage * 0.4) + (lowestWordScore * 0.4) + (fluency * 0.2));
         
-        // Final punishment: deduct 4 points for EVERY single error on top of that.
+        // Find errors (now using 90% as the threshold for an "error")
+        const strictErrors = wordData.filter(w => (Number(w.accuracy) || 100) < 90);
+        
+        // Deduct 5 points per mispronounced word
         if (strictErrors.length > 0) {
-            strictScore -= (strictErrors.length * 4); 
+            strictScore -= (strictErrors.length * 5); 
         }
         
+        // Final NaN and Bounds Check
+        if (isNaN(strictScore)) strictScore = 0;
         strictScore = Math.max(0, Math.min(100, strictScore)); 
         
         const stars = strictScore >= 85 ? 3 : strictScore >= 65 ? 2 : strictScore >= 35 ? 1 : 0;
         
         setFeedback({
-          score: strictScore, // Your new, unforgiving score
+          score: strictScore, 
           stars: stars,
-          fluency: data.fluency || 0,
-          prosody: data.prosody || 0,
+          fluency: fluency,
+          prosody: prosody,
           heard: data.heard || "Não entendi nada.",
           errors: strictErrors,
-          worstWord: wordData.length > 0 ? wordData.reduce((prev, curr) => prev.accuracy < curr.accuracy ? prev : curr) : null,
+          worstWord: worstWord,
           msg: strictScore >= 85 ? "Nativo! 🔥" : strictScore >= 65 ? "Bom sotaque! 🌟" : "Forte sotaque detectado! 🐢"
         });
 
@@ -338,12 +351,12 @@ export default function SotaQApp() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '5px' }}>
                   {feedback.errors.map((err, idx) => (
                     <span key={idx} style={{ background: '#ef4444', color: 'white', padding: '4px 8px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                      {err.word} ({err.accuracy}%)
+                      {err.word} ({Math.round(err.accuracy)}%)
                     </span>
                   ))}
                 </div>
-                {/* EXPOSE THE WEAKEST LINK */}
-                {feedback.worstWord && (
+                {/* SAFEGUARDED WEAKEST LINK */}
+                {feedback.worstWord && feedback.worstWord.word && (
                   <p style={{ fontSize: '0.75rem', color: '#b91c1c', marginTop: '10px', fontWeight: 'bold' }}>
                     Sua pior palavra: "{feedback.worstWord.word}" derrubou sua nota.
                   </p>
