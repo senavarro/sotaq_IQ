@@ -6,11 +6,8 @@ exports.handler = async (event) => {
   try {
     const { audio, referenceText, locale } = JSON.parse(event.body);
     const speechConfig = sdk.SpeechConfig.fromSubscription(process.env.AZURE_SPEECH_KEY, process.env.AZURE_SPEECH_REGION);
-    
-    // This dynamically catches the US or UK accent from your frontend
     speechConfig.speechRecognitionLanguage = locale || "en-US";
 
-    // The 'true' at the end is the magic key—it tells Azure to grade every single phoneme
     const pronConfig = new sdk.PronunciationAssessmentConfig(
       referenceText,
       sdk.PronunciationAssessmentGradingSystem.HundredMark,
@@ -33,19 +30,28 @@ exports.handler = async (event) => {
 
     const assessmentResult = sdk.PronunciationAssessmentResult.fromResult(result);
 
-    // THE UPGRADE: We filter Azure's massive data dump to find only the broken words
+    // THE FIX: Digging into the correct Azure object layer
     const errors = assessmentResult.detailResult.Words
-      .filter(w => w.ErrorType !== "None")
-      .map(w => ({ word: w.Word, error: w.ErrorType }));
+      .map(w => {
+        const errObj = w.PronunciationAssessment;
+        return { 
+          word: w.Word, 
+          error: errObj ? errObj.ErrorType : "None" 
+        };
+      })
+      .filter(w => w.error && w.error.toLowerCase() !== "none");
+
+    // THE FIX: Prevent 0% Prosody on short clips
+    const finalProsody = assessmentResult.prosodyScore > 0 ? assessmentResult.prosodyScore : assessmentResult.accuracyScore;
 
     return {
       statusCode: 200,
       body: JSON.stringify({
         score: Math.round(assessmentResult.accuracyScore),
         fluency: Math.round(assessmentResult.fluencyScore),
-        prosody: Math.round(assessmentResult.prosodyScore),
+        prosody: Math.round(finalProsody),
         heard: result.text,
-        mispronunciations: errors // This is what populates your red warning boxes!
+        mispronunciations: errors
       })
     };
   } catch (error) {
