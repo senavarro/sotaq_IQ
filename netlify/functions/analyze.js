@@ -14,6 +14,8 @@ exports.handler = async (event) => {
       sdk.PronunciationAssessmentGranularity.Phoneme,
       true 
     );
+    // Force explicit prosody evaluation
+    pronConfig.enableProsody = true;
 
     const audioBuffer = Buffer.from(audio, 'base64');
     const pushStream = sdk.AudioInputStream.createPushStream();
@@ -30,28 +32,20 @@ exports.handler = async (event) => {
 
     const assessmentResult = sdk.PronunciationAssessmentResult.fromResult(result);
 
-    // THE FIX: Digging into the correct Azure object layer
-    const errors = assessmentResult.detailResult.Words
-      .map(w => {
-        const errObj = w.PronunciationAssessment;
-        return { 
-          word: w.Word, 
-          error: errObj ? errObj.ErrorType : "None" 
-        };
-      })
-      .filter(w => w.error && w.error.toLowerCase() !== "none");
-
-    // THE FIX: Prevent 0% Prosody on short clips
-    const finalProsody = assessmentResult.prosodyScore > 0 ? assessmentResult.prosodyScore : assessmentResult.accuracyScore;
+    // 🚨 THE FIX: Extract the EXACT accuracy score for every single word
+    const wordScores = assessmentResult.detailResult.Words.map(w => ({
+      word: w.Word,
+      accuracy: w.PronunciationAssessment ? w.PronunciationAssessment.AccuracyScore : 100
+    }));
 
     return {
       statusCode: 200,
       body: JSON.stringify({
         score: Math.round(assessmentResult.accuracyScore),
         fluency: Math.round(assessmentResult.fluencyScore),
-        prosody: Math.round(finalProsody),
+        prosody: Math.round(assessmentResult.prosodyScore || assessmentResult.accuracyScore),
         heard: result.text,
-        mispronunciations: errors
+        words: wordScores // Sending the X-Ray data to the frontend
       })
     };
   } catch (error) {
