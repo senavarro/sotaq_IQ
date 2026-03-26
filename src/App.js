@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient'; // Ensure this matches your setup
+import { supabase } from './supabaseClient'; 
 import confetti from 'canvas-confetti';
-import { curatedPhrases } from './phraseBank'; // Ensure this has { en: "...", pt: "..." } objects
+import { curatedPhrases } from './phraseBank'; 
+
+// --- SOTAQ ECONOMY LIMITS ---
+const MAX_ENERGY = 7;
+const MAX_RECORDING_TIME = 5000; // 5 Seconds
 
 // --- LEVEL & XP MATH ---
 const getLevelInfo = (xp) => {
@@ -17,15 +21,14 @@ const getLevelInfo = (xp) => {
   return { level: isMax ? 10 : level, currentMin, nextTier: isMax ? "MAX" : nextTier, progress };
 };
 
-const MAX_ENERGY = 10;
-const MAX_RECORDING_TIME = 7000; // 7 seconds in milliseconds
-
 export default function SotaQApp() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
   const [stats, setStats] = useState({ count: MAX_ENERGY, xp: 0 });
   const [text, setText] = useState('');
   const [translation, setTranslation] = useState('');
+  
+  // ACCENT SELECTOR (Default US)
   const [accent, setAccent] = useState('en-US');
   
   const [isRecording, setIsRecording] = useState(false);
@@ -34,7 +37,6 @@ export default function SotaQApp() {
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [recordingTimeout, setRecordingTimeout] = useState(null);
 
-  // --- SESSION & DATABASE ---
   useEffect(() => {
     const saved = localStorage.getItem('quevedo_vip_user');
     if (saved) restoreSession(saved);
@@ -45,7 +47,6 @@ export default function SotaQApp() {
     if (uStats) {
       const today = new Date().toISOString().split('T')[0];
       if (uStats.last_played_date !== today) {
-        // New day! Reset energy to 10
         const { data: updated } = await supabase.from('user_stats')
           .update({ daily_count: MAX_ENERGY, last_played_date: today })
           .eq('email', mail).select().single();
@@ -63,7 +64,6 @@ export default function SotaQApp() {
     setTranslation(typeof item === 'object' ? item.pt : '');
   };
 
-  // --- AUDIO & AZURE LOGIC ---
   const startRecording = async () => {
     if (stats.count <= 0) { 
       alert("Energia esgotada por hoje! Volte amanhã."); 
@@ -80,14 +80,14 @@ export default function SotaQApp() {
         setIsProcessing(true);
         const audioBlob = new Blob(chunks, { type: 'audio/wav' });
         await analyzeSpeech(audioBlob);
-        stream.getTracks().forEach(track => track.stop()); // Turn off mic
+        stream.getTracks().forEach(track => track.stop()); 
       };
 
       recorder.start();
       setMediaRecorder(recorder);
       setIsRecording(true);
 
-      // 7-SECOND AUTO-STOP PROTECTOR
+      // 5-SECOND HARD STOP
       const timeoutId = setTimeout(() => {
         if (recorder.state === "recording") {
           recorder.stop();
@@ -116,7 +116,6 @@ export default function SotaQApp() {
       const base64Audio = reader.result.split(',')[1];
 
       try {
-        // Send to Netlify Vault
         const response = await fetch('/.netlify/functions/analyze', {
           method: 'POST',
           body: JSON.stringify({ 
@@ -129,21 +128,20 @@ export default function SotaQApp() {
         if (!response.ok) throw new Error("Erro na API");
         const data = await response.json();
         
-        // Grading Logic based on Azure's exact accuracy score
         const score = data.score;
         const stars = score >= 85 ? 3 : score >= 65 ? 2 : score >= 35 ? 1 : 0;
         
         setFeedback({
           score: score,
           stars: stars,
-          heard: data.heard,
           fluency: data.fluency,
-          msg: score >= 85 ? "Nativo! 🔥" : score >= 65 ? "Bom sotaque! 🌟" : "Vamos tentar de novo! 🐢"
+          prosody: data.prosody,
+          errors: data.mispronunciations || [],
+          msg: score >= 85 ? "Nativo! 🔥" : score >= 65 ? "Bom sotaque! 🌟" : "Cuidado com a pronúncia! 🐢"
         });
 
         if (stars === 3) confetti();
         
-        // Update Stats
         const newXP = stats.xp + (stars * 10);
         const newCount = stats.count - 1;
         setStats({ count: newCount, xp: newXP });
@@ -157,7 +155,6 @@ export default function SotaQApp() {
     };
   };
 
-  // Basic login fallback if no user
   if (!user) {
     return (
       <div style={{ padding: '50px', textAlign: 'center', fontFamily: 'Inter, sans-serif' }}>
@@ -184,7 +181,8 @@ export default function SotaQApp() {
       </nav>
 
       <div style={{ maxWidth: '450px', margin: '0 auto', padding: '0 20px', paddingBottom: '40px' }}>
-        {/* PROGRESS */}
+        
+        {/* PROGRESS BAR */}
         <div style={{ marginBottom: '30px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '800', marginBottom: '6px', color: '#64748b' }}>
             <span>NÍVEL {level.level}</span>
@@ -195,26 +193,48 @@ export default function SotaQApp() {
           </div>
         </div>
 
+        {/* ACCENT TOGGLE */}
+        <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '16px', padding: '4px', marginBottom: '20px' }}>
+          <button onClick={() => setAccent('en-US')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: accent === 'en-US' ? '#1a2a6c' : 'transparent', color: accent === 'en-US' ? 'white' : '#64748b', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}>🇺🇸 USA Accent</button>
+          <button onClick={() => setAccent('en-GB')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: accent === 'en-GB' ? '#1a2a6c' : 'transparent', color: accent === 'en-GB' ? 'white' : '#64748b', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}>🇬🇧 UK Accent</button>
+        </div>
+
         {/* AI CARD */}
-        <div style={{ background: 'white', borderRadius: '30px', padding: '30px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.05)', textAlign: 'center', marginBottom: '20px', border: '1px solid rgba(255,255,255,0.8)' }}>
+        <div style={{ background: 'white', borderRadius: '30px', padding: '30px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.05)', textAlign: 'center', marginBottom: '20px' }}>
            <button onClick={loadRandomPhrase} style={{ background: '#ff6a00', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', marginBottom: '20px', cursor: 'pointer' }}>🎲 NOVA FRASE</button>
            <h2 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: '0 0 10px 0' }}>{text || "Pressione 'Nova Frase'..."}</h2>
            {translation && <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.9rem', margin: 0 }}>🇧🇷 "{translation}"</p>}
         </div>
 
-        {/* ACCENT TOGGLE */}
-        <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '16px', padding: '4px', marginBottom: '20px' }}>
-          <button onClick={() => setAccent('en-US')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: accent === 'en-US' ? '#1a2a6c' : 'transparent', color: accent === 'en-US' ? 'white' : '#64748b', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}>🇺🇸 USA</button>
-          <button onClick={() => setAccent('en-GB')} style={{ flex: 1, padding: '12px', borderRadius: '12px', border: 'none', background: accent === 'en-GB' ? '#1a2a6c' : 'transparent', color: accent === 'en-GB' ? 'white' : '#64748b', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}>🇬🇧 UK</button>
-        </div>
-
-        {/* FEEDBACK */}
+        {/* FEEDBACK & ERRORS */}
         {feedback && !isProcessing && (
           <div style={{ background: 'white', padding: '20px', borderRadius: '24px', textAlign: 'center', marginBottom: '20px', border: '2px solid #e2e8f0', animation: 'fadeIn 0.5s' }}>
             <div style={{ fontSize: '1.5rem', marginBottom: '5px', color: '#f59e0b' }}>{'★'.repeat(feedback.stars)}{'☆'.repeat(3 - feedback.stars)}</div>
-            <p style={{ fontWeight: '900', margin: '0 0 5px 0', color: '#1a2a6c', fontSize: '1.2rem' }}>{feedback.score}% Precisão</p>
-            <p style={{ color: '#64748b', fontSize: '0.85rem', margin: '0 0 10px 0' }}>Fluência: {feedback.fluency}%</p>
-            <p style={{ fontWeight: '700', margin: 0, color: feedback.score >= 85 ? '#10b981' : '#ef4444' }}>{feedback.msg}</p>
+            <p style={{ fontWeight: '900', margin: '0 0 10px 0', color: '#1a2a6c', fontSize: '1.4rem' }}>{feedback.score}% Precisão</p>
+            
+            {/* The "Pro" Detailed Stats */}
+            <div style={{ display: 'flex', justifyContent: 'space-around', margin: '15px 0', padding: '10px', background: '#f8fafc', borderRadius: '12px' }}>
+                <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Ritmo</span><strong style={{ color: '#334155' }}>{feedback.prosody}%</strong></div>
+                <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Fluência</span><strong style={{ color: '#334155' }}>{feedback.fluency}%</strong></div>
+            </div>
+
+            {/* Error Words Highlighter */}
+            {feedback.errors.length > 0 ? (
+              <div style={{ marginTop: '15px', padding: '10px', background: '#fef2f2', borderRadius: '12px', border: '1px solid #fca5a5' }}>
+                <p style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#ef4444', margin: '0 0 5px 0' }}>⚠️ O que você errou:</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '5px' }}>
+                  {feedback.errors.map((err, idx) => (
+                    <span key={idx} style={{ background: '#ef4444', color: 'white', padding: '2px 8px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                      {err.word}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : (
+               <p style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#10b981', margin: '10px 0 0 0' }}>Nenhum erro detectado! 🎯</p>
+            )}
+            
+            <p style={{ fontWeight: '800', margin: '15px 0 0 0', color: feedback.score >= 85 ? '#10b981' : '#f59e0b' }}>{feedback.msg}</p>
           </div>
         )}
 
@@ -231,7 +251,7 @@ export default function SotaQApp() {
             opacity: (!text || isProcessing) ? 0.7 : 1
           }}
         >
-          {isProcessing ? '⏳ AVALIANDO SOTAQUE...' : isRecording ? '🛑 PARAR (MÁX 7s)' : '🎤 PRATICAR'}
+          {isProcessing ? '⏳ AVALIANDO SOTAQUE...' : isRecording ? '🛑 PARAR (MÁX 5s)' : '🎤 PRATICAR'}
         </button>
       </div>
     </div>
