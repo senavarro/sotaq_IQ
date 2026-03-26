@@ -61,9 +61,7 @@ export default function SotaQApp() {
   const [translation, setTranslation] = useState('');
   const [accent, setAccent] = useState('en-US');
   
-  // UI States
   const [showRules, setShowRules] = useState(false);
-  
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -156,14 +154,6 @@ export default function SotaQApp() {
     }
   };
 
-  const stopRecording = () => {
-    if (recordingTimeout) clearTimeout(recordingTimeout);
-    if (mediaRecorder && mediaRecorder.state === "recording") {
-      mediaRecorder.stop();
-    }
-    setIsRecording(false);
-  };
-
   const analyzeSpeech = async (blob) => {
     const reader = new FileReader();
     reader.readAsDataURL(blob);
@@ -179,24 +169,34 @@ export default function SotaQApp() {
         if (!response.ok) throw new Error("Erro na API");
         const data = await response.json();
         
-        const score = data.score || 0;
-        const stars = score >= 85 ? 3 : score >= 65 ? 2 : score >= 35 ? 1 : 0;
+        let rawScore = data.score || 0;
+        let prosody = data.prosody || 0;
+        let errors = data.mispronunciations || [];
+
+        // 🚨 RUTHLESS ACCENT MATH 🚨
+        // We blend 70% Accuracy with 30% Rhythm, then subtract 5 points for every bad word.
+        let strictScore = Math.round((rawScore * 0.7) + (prosody * 0.3));
+        if (errors.length > 0) {
+            strictScore -= (errors.length * 5); 
+        }
+        strictScore = Math.max(0, Math.min(100, strictScore)); // Keep it between 0-100
         
-        // ADDED data.heard HERE so the UI can display it
+        const stars = strictScore >= 85 ? 3 : strictScore >= 65 ? 2 : strictScore >= 35 ? 1 : 0;
+        
         setFeedback({
-          score: score,
+          score: strictScore,
           stars: stars,
           fluency: data.fluency || 0,
-          prosody: data.prosody || 0,
+          prosody: prosody,
           heard: data.heard || "Não entendi nada.",
-          errors: data.mispronunciations || [],
-          msg: score >= 85 ? "Nativo! 🔥" : score >= 65 ? "Bom sotaque! 🌟" : "Cuidado com a pronúncia! 🐢"
+          errors: errors,
+          msg: strictScore >= 85 ? "Nativo! 🔥" : strictScore >= 65 ? "Bom sotaque! 🌟" : "Forte sotaque detectado! 🐢"
         });
 
         if (stars === 3) confetti();
         
         const newXP = stats.xp + (stars * 10);
-        const newCount = stats.count - 1;
+        const newCount = stats.count - 1; // 1 Energy deducted per recording!
         setStats({ count: newCount, xp: newXP });
         await supabase.from('user_stats').update({ daily_count: newCount, total_xp: newXP }).eq('email', user);
         
@@ -208,7 +208,6 @@ export default function SotaQApp() {
     };
   };
 
-  // Login Page (Cleaned up, no rules)
   if (!user) {
     return (
       <div style={{ background: '#f0f4f8', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif', padding: '20px' }}>
@@ -235,9 +234,7 @@ export default function SotaQApp() {
 
   const level = getLevelInfo(stats.xp);
 
-  // Dynamic Button Logic
   let actionButtonProps = { text: '🎤 PRATICAR', bg: '#1a2a6c', onClick: startRecording, disabled: !text };
-  
   if (isProcessing) {
     actionButtonProps = { text: '⏳ AVALIANDO...', bg: '#f59e0b', onClick: null, disabled: true };
   } else if (isRecording) {
@@ -248,10 +245,29 @@ export default function SotaQApp() {
 
   return (
     <div style={{ background: '#f0f4f8', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
+      
+      {/* 📜 NEW RULES MODAL */}
+      {showRules && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ background: 'white', padding: '30px', borderRadius: '24px', maxWidth: '400px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
+            <h3 style={{ marginTop: 0, color: '#1a2a6c', fontWeight: '900', fontSize: '1.4rem' }}>📖 Como Funciona</h3>
+            <ul style={{ paddingLeft: '20px', color: '#475569', fontSize: '0.9rem', lineHeight: '1.6', margin: '20px 0' }}>
+              <li style={{ marginBottom: '10px' }}><strong>⚡ Energia:</strong> Cada gravação que você faz consome 1 vida, acertando ou errando. Suas 7 vidas recarregam todo dia!</li>
+              <li style={{ marginBottom: '10px' }}><strong>🔊 Ouvir:</strong> Aperte este botão para escutar a pronúncia nativa e calibrar seu ouvido antes de gastar sua energia.</li>
+              <li style={{ marginBottom: '10px' }}><strong>🌎 Sotaques:</strong> Escolha entre Americano e Britânico. A IA ajusta a régua e te pune se você usar o sotaque da região errada.</li>
+              <li><strong>🎯 A Nota:</strong> Nossa IA avalia a exatidão das suas sílabas e o seu ritmo (swing). Gaguejar não baixa seu sotaque, mas soa menos natural!</li>
+            </ul>
+            <button onClick={() => setShowRules(false)} style={{ width: '100%', padding: '15px', background: '#ff6a00', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '1rem', cursor: 'pointer' }}>
+              ENTENDI, VAMOS LÁ!
+            </button>
+          </div>
+        </div>
+      )}
+
       <nav style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '450px', margin: '0 auto' }}>
         <h1 style={{ fontSize: '1.2rem', fontWeight: '900', color: '#1a2a6c', margin: 0 }}>SotaQ AI</h1>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={() => setShowRules(!showRules)} style={{ background: 'transparent', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}>ℹ️</button>
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+          <button onClick={() => setShowRules(true)} style={{ background: 'transparent', border: 'none', fontSize: '0.9rem', fontWeight: '800', color: '#64748b', cursor: 'pointer', textDecoration: 'underline' }}>Regras</button>
           <div style={{ background: 'white', padding: '8px 16px', borderRadius: '50px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontWeight: '800', color: '#1a2a6c' }}>
             ⚡ {stats.count}/{MAX_ENERGY}
           </div>
@@ -260,19 +276,6 @@ export default function SotaQApp() {
 
       <div style={{ maxWidth: '450px', margin: '0 auto', padding: '0 20px', paddingBottom: '40px' }}>
         
-        {/* NEW RULES DROP DOWN */}
-        {showRules && (
-          <div style={{ background: '#e0e7ff', padding: '15px', borderRadius: '16px', marginBottom: '20px', fontSize: '0.85rem', color: '#312e81', border: '1px solid #c7d2fe', animation: 'fadeIn 0.3s' }}>
-            <p style={{ fontWeight: '900', margin: '0 0 8px 0' }}>Como funciona o SotaQ?</p>
-            <ul style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.5' }}>
-              <li>Escolha a frase e o sotaque desejado (EUA ou UK).</li>
-              <li>Sua nota principal <strong>(Precisão)</strong> foca na pronúncia exata dos sons.</li>
-              <li>A Inteligência Artificial também avalia se você não gaguejou <strong>(Fluência)</strong> e se teve um compasso natural <strong>(Ritmo)</strong>.</li>
-              <li>Cada erro custa 1 ⚡. Volte todos os dias para recarregar!</li>
-            </ul>
-          </div>
-        )}
-
         <div style={{ marginBottom: '30px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', fontWeight: '800', marginBottom: '6px', color: '#64748b' }}>
             <span>NÍVEL {level.level}</span>
@@ -302,16 +305,14 @@ export default function SotaQApp() {
           <div style={{ background: 'white', padding: '20px', borderRadius: '24px', textAlign: 'center', marginBottom: '20px', border: '2px solid #e2e8f0', animation: 'fadeIn 0.5s' }}>
             <div style={{ fontSize: '1.5rem', marginBottom: '5px', color: '#f59e0b' }}>{'★'.repeat(feedback.stars)}{'☆'.repeat(3 - feedback.stars)}</div>
             
-            {/* THIS IS THE TRUE ACCENT SCORE */}
             <p style={{ fontWeight: '900', margin: '0 0 5px 0', color: '#1a2a6c', fontSize: '1.4rem' }}>{feedback.score}% Precisão (Sotaque)</p>
             
-            {/* "WHAT I HEARD" RESTORED */}
             <p style={{ color: '#64748b', fontSize: '0.9rem', fontStyle: 'italic', margin: '0 0 15px 0' }}>
               🗣️ A IA ouviu: "{feedback.heard}"
             </p>
             
             <div style={{ display: 'flex', justifyContent: 'space-around', margin: '15px 0', padding: '10px', background: '#f8fafc', borderRadius: '12px' }}>
-                <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Ritmo</span><strong style={{ color: '#334155' }}>{feedback.prosody}%</strong></div>
+                <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Ritmo Bruto</span><strong style={{ color: '#334155' }}>{feedback.prosody}%</strong></div>
                 <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Fluência</span><strong style={{ color: '#334155' }}>{feedback.fluency}%</strong></div>
             </div>
 
