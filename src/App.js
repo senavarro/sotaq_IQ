@@ -57,6 +57,9 @@ export default function SotaQApp() {
   const [email, setEmail] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [stats, setStats] = useState({ count: MAX_ENERGY, xp: 0 });
+  
+  // 🚀 NEW: Custom Mode State
+  const [isCustomMode, setIsCustomMode] = useState(false);
   const [text, setText] = useState('');
   const [translation, setTranslation] = useState('');
   const [accent, setAccent] = useState('en-US');
@@ -99,10 +102,18 @@ export default function SotaQApp() {
   };
 
   const loadRandomPhrase = () => {
+    setIsCustomMode(false);
     setFeedback(null);
     const item = curatedPhrases[Math.floor(Math.random() * curatedPhrases.length)];
     setText(typeof item === 'object' ? item.en : item);
     setTranslation(typeof item === 'object' ? item.pt : '');
+  };
+
+  const enableCustomMode = () => {
+    setIsCustomMode(true);
+    setFeedback(null);
+    setText('');
+    setTranslation('');
   };
 
   const playAudio = () => {
@@ -114,6 +125,29 @@ export default function SotaQApp() {
     const targetVoice = voices.find(v => v.lang.replace('_', '-') === accent);
     if (targetVoice) utterance.voice = targetVoice;
     window.speechSynthesis.speak(utterance);
+  };
+
+  // 🚀 NEW: The Viral Share Function
+  const handleShare = async () => {
+    const sotaqueNome = accent === 'en-US' ? 'Americano' : 'Britânico';
+    const shareText = `Fui julgado pela IA do SotaQ! 🤖\n\nMeu sotaque ${sotaqueNome} atingiu ${feedback.score}% de Precisão.\n\nTente bater meu recorde:`;
+    const appUrl = window.location.origin; // Gets your current Netlify URL
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'SotaQ AI',
+          text: shareText,
+          url: appUrl,
+        });
+      } catch (err) {
+        console.log('Usuário cancelou o compartilhamento', err);
+      }
+    } else {
+      // Fallback for desktop browsers that don't support native sharing
+      navigator.clipboard.writeText(`${shareText} ${appUrl}`);
+      alert("Texto copiado! Cole no WhatsApp ou Instagram para desafiar seus amigos. 🚀");
+    }
   };
 
   const startRecording = async () => {
@@ -181,7 +215,6 @@ export default function SotaQApp() {
         const wordData = Array.isArray(data.words) ? data.words : [];
         const heardStr = data.heard || "";
 
-        // 🚨 SILENCE GUARD: If there are no words, skip the math entirely.
         if (wordData.length === 0 || heardStr.trim() === "") {
             setFeedback({
                 score: 0,
@@ -193,12 +226,9 @@ export default function SotaQApp() {
                 worstWord: null,
                 msg: "Não ouvimos você! Fale mais perto do microfone. 🛑"
             });
-            
-            // Still deducts energy (they used a server request!)
             const newCount = stats.count - 1; 
             setStats({ count: newCount, xp: stats.xp });
             await supabase.from('user_stats').update({ daily_count: newCount }).eq('email', user);
-            
             setIsProcessing(false);
             return;
         }
@@ -216,7 +246,6 @@ export default function SotaQApp() {
         }
 
         let strictScore = Math.round((rawAverage * 0.4) + (lowestWordScore * 0.4) + (fluency * 0.2));
-        
         const strictErrors = wordData.filter(w => (Number(w.accuracy) || 100) < 90);
         
         if (strictErrors.length > 0) {
@@ -280,13 +309,14 @@ export default function SotaQApp() {
 
   const level = getLevelInfo(stats.xp);
 
-  let actionButtonProps = { text: '🎤 PRATICAR', bg: '#1a2a6c', onClick: startRecording, disabled: !text };
+  let actionButtonProps = { text: '🎤 PRATICAR', bg: '#1a2a6c', onClick: startRecording, disabled: !text || text.trim().length === 0 };
   if (isProcessing) {
     actionButtonProps = { text: '⏳ AVALIANDO...', bg: '#f59e0b', onClick: null, disabled: true };
   } else if (isRecording) {
     actionButtonProps = { text: '🛑 PARAR (MÁX 5s)', bg: '#ef4444', onClick: stopRecording, disabled: false };
   } else if (feedback && feedback.score >= 85) {
-    actionButtonProps = { text: '⏩ AVANÇAR', bg: '#10b981', onClick: loadRandomPhrase, disabled: false };
+    // If they got 85+ and are in custom mode, we just clear the feedback to try again. If random, load next.
+    actionButtonProps = { text: isCustomMode ? '✨ TENTAR DE NOVO' : '⏩ AVANÇAR', bg: '#10b981', onClick: isCustomMode ? () => setFeedback(null) : loadRandomPhrase, disabled: false };
   }
 
   return (
@@ -297,10 +327,10 @@ export default function SotaQApp() {
           <div style={{ background: 'white', padding: '30px', borderRadius: '24px', maxWidth: '400px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
             <h3 style={{ marginTop: 0, color: '#1a2a6c', fontWeight: '900', fontSize: '1.4rem' }}>📖 Como Funciona</h3>
             <ul style={{ paddingLeft: '20px', color: '#475569', fontSize: '0.9rem', lineHeight: '1.6', margin: '20px 0' }}>
-              <li style={{ marginBottom: '10px' }}><strong>⚡ Energia:</strong> Cada gravação que você faz consome 1 vida, acertando ou errando. Suas 7 vidas recarregam todo dia!</li>
-              <li style={{ marginBottom: '10px' }}><strong>🔊 Ouvir:</strong> Aperte este botão para escutar a pronúncia nativa e calibrar seu ouvido antes de gastar sua energia.</li>
-              <li style={{ marginBottom: '10px' }}><strong>🌎 Sotaques:</strong> Escolha entre Americano e Britânico. A IA ajusta a régua e te pune se você usar o sotaque da região errada.</li>
-              <li><strong>🎯 A Nota:</strong> Nossa IA avalia a exatidão das suas sílabas e o seu ritmo (swing). Gaguejar não baixa seu sotaque, mas soa menos natural!</li>
+              <li style={{ marginBottom: '10px' }}><strong>⚡ Energia:</strong> Cada gravação que você faz consome 1 vida. Recarrega todo dia!</li>
+              <li style={{ marginBottom: '10px' }}><strong>🔊 Ouvir:</strong> Escute a pronúncia nativa antes de gastar sua energia.</li>
+              <li style={{ marginBottom: '10px' }}><strong>✍️ Minha Frase:</strong> Digite frases da sua rotina ou entrevistas para treinar.</li>
+              <li><strong>🎯 A Nota:</strong> Nossa IA pune severamente sílabas erradas, gagueiras (fluência) e falta de ritmo.</li>
             </ul>
             <button onClick={() => setShowRules(false)} style={{ width: '100%', padding: '15px', background: '#ff6a00', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '1rem', cursor: 'pointer' }}>
               ENTENDI, VAMOS LÁ!
@@ -337,13 +367,29 @@ export default function SotaQApp() {
         </div>
 
         <div style={{ background: 'white', borderRadius: '30px', padding: '30px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.05)', textAlign: 'center', marginBottom: '20px' }}>
-           <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '20px' }}>
-             <button onClick={loadRandomPhrase} style={{ background: '#ff6a00', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer' }}>🎲 NOVA FRASE</button>
-             <button onClick={playAudio} disabled={!text} style={{ background: '#1a2a6c', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer', opacity: text ? 1 : 0.5 }}>🔊 OUVIR</button>
+           
+           {/* 🚀 NEW: Dynamic Tab Buttons for Custom Mode */}
+           <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+             <button onClick={loadRandomPhrase} style={{ background: !isCustomMode ? '#ff6a00' : '#f1f5f9', color: !isCustomMode ? 'white' : '#64748b', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer', transition: '0.2s' }}>🎲 ALEATÓRIA</button>
+             <button onClick={enableCustomMode} style={{ background: isCustomMode ? '#ff6a00' : '#f1f5f9', color: isCustomMode ? 'white' : '#64748b', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer', transition: '0.2s' }}>✍️ DIGITAR</button>
+             <button onClick={playAudio} disabled={!text || text.trim() === ''} style={{ background: '#1a2a6c', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer', opacity: text ? 1 : 0.5 }}>🔊 OUVIR</button>
            </div>
            
-           <h2 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: '0 0 10px 0' }}>{text || "Pressione 'Nova Frase'..."}</h2>
-           {translation && <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.9rem', margin: 0 }}>🇧🇷 "{translation}"</p>}
+           {/* 🚀 NEW: Smart Text Input / Display */}
+           {isCustomMode ? (
+             <textarea 
+               value={text} 
+               onChange={(e) => setText(e.target.value)} 
+               placeholder="Digite uma frase em inglês (curta, máx 5 segs)..."
+               maxLength={100}
+               style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '16px', border: '2px dashed #cbd5e1', fontSize: '1.2rem', fontWeight: 'bold', color: '#0f172a', textAlign: 'center', minHeight: '100px', resize: 'none', outline: 'none' }}
+             />
+           ) : (
+             <>
+               <h2 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: '0 0 10px 0' }}>{text || "Pressione 'Aleatória'..."}</h2>
+               {translation && <p style={{ color: '#94a3b8', fontStyle: 'italic', fontSize: '0.9rem', margin: 0 }}>🇧🇷 "{translation}"</p>}
+             </>
+           )}
         </div>
 
         {feedback && !isProcessing && (
@@ -378,11 +424,17 @@ export default function SotaQApp() {
                 )}
               </div>
             ) : feedback.score > 0 ? (
-               /* 🚨 THE SILENCE FIX: Only congratulate them if the score is actually above 0 */
                <p style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#10b981', margin: '10px 0 0 0' }}>Nenhum erro detectado! 🎯</p>
             ) : null}
             
             <p style={{ fontWeight: '800', margin: '15px 0 0 0', color: feedback.score >= 85 ? '#10b981' : '#ef4444' }}>{feedback.msg}</p>
+
+            {/* 🚀 NEW: VIRAL SHARE BUTTON */}
+            {feedback.score > 0 && (
+              <button onClick={handleShare} style={{ marginTop: '20px', width: '100%', background: '#25D366', color: 'white', padding: '12px', borderRadius: '12px', border: 'none', fontWeight: '900', fontSize: '1rem', cursor: 'pointer', boxShadow: '0 4px 10px rgba(37, 211, 102, 0.3)', transition: '0.2s' }}>
+                📲 DESAFIAR AMIGOS
+              </button>
+            )}
           </div>
         )}
 
