@@ -89,7 +89,7 @@ export default function SotaQApp() {
         setUser(mail);
         localStorage.setItem('quevedo_vip_user', mail);
       } else {
-        alert("Usuário não encontrado. Verifique seu email.");
+        alert("Usuário não encontrado.");
       }
     } catch (err) {
       alert("Erro na conexão com o banco de dados.");
@@ -150,11 +150,10 @@ export default function SotaQApp() {
       setRecordingTimeout(timeoutId);
 
     } catch (err) { 
-      alert("Por favor, permita o acesso ao microfone."); 
+      alert("Permita o acesso ao microfone."); 
     }
   };
 
-  // 🚨 THE MISSING FUNCTION IS BACK! 🚨
   const stopRecording = () => {
     if (recordingTimeout) clearTimeout(recordingTimeout);
     if (mediaRecorder && mediaRecorder.state === "recording") {
@@ -179,14 +178,19 @@ export default function SotaQApp() {
         const data = await response.json();
         
         let rawScore = data.score || 0;
-        let prosody = data.prosody || 0;
-        let errors = data.mispronunciations || [];
+        const wordData = data.words || [];
 
-        // 🚨 RUTHLESS ACCENT MATH 🚨
-        let strictScore = Math.round((rawScore * 0.7) + (prosody * 0.3));
-        if (errors.length > 0) {
-            strictScore -= (errors.length * 5); 
+        // 🚨 THE NEW STRICT MATH 🚨
+        // Any word below 85% is flagged as a hard error.
+        const strictErrors = wordData.filter(w => w.accuracy < 85);
+
+        let strictScore = rawScore;
+        
+        // Massive penalty: Deduct 12 points for EVERY mispronounced word.
+        if (strictErrors.length > 0) {
+            strictScore -= (strictErrors.length * 12); 
         }
+        
         strictScore = Math.max(0, Math.min(100, strictScore)); 
         
         const stars = strictScore >= 85 ? 3 : strictScore >= 65 ? 2 : strictScore >= 35 ? 1 : 0;
@@ -195,16 +199,16 @@ export default function SotaQApp() {
           score: strictScore,
           stars: stars,
           fluency: data.fluency || 0,
-          prosody: prosody,
+          prosody: data.prosody || 0,
           heard: data.heard || "Não entendi nada.",
-          errors: errors,
+          errors: strictErrors, // Now contains the specific words AND their low scores
           msg: strictScore >= 85 ? "Nativo! 🔥" : strictScore >= 65 ? "Bom sotaque! 🌟" : "Forte sotaque detectado! 🐢"
         });
 
         if (stars === 3) confetti();
         
         const newXP = stats.xp + (stars * 10);
-        const newCount = stats.count - 1; // Deduct energy
+        const newCount = stats.count - 1; 
         setStats({ count: newCount, xp: newXP });
         await supabase.from('user_stats').update({ daily_count: newCount, total_xp: newXP }).eq('email', user);
         
@@ -254,7 +258,6 @@ export default function SotaQApp() {
   return (
     <div style={{ background: '#f0f4f8', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
       
-      {/* 📜 RULES MODAL */}
       {showRules && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
           <div style={{ background: 'white', padding: '30px', borderRadius: '24px', maxWidth: '400px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)' }}>
@@ -329,8 +332,8 @@ export default function SotaQApp() {
                 <p style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#ef4444', margin: '0 0 5px 0' }}>⚠️ O que você errou:</p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '5px' }}>
                   {feedback.errors.map((err, idx) => (
-                    <span key={idx} style={{ background: '#ef4444', color: 'white', padding: '2px 8px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                      {err.word}
+                    <span key={idx} style={{ background: '#ef4444', color: 'white', padding: '4px 8px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                      {err.word} ({err.accuracy}%)
                     </span>
                   ))}
                 </div>
