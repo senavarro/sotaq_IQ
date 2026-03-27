@@ -543,7 +543,7 @@ export default function SotaQApp() {
                 <div style={{ background: '#e0e7ff', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✍️</div>
                 <div>
                   <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Modos de Treino</strong>
-                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Gere frases <strong>Aleatórias</strong>. Usuários PRO podem <strong>Digitar</strong> suas próprias frases.</span>
+                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Gere frases <strong>Aleatórias</strong>. Usuários <span onClick={() => { setShowRules(false); setShowProModal(true); }} style={{ color: '#ff6a00', fontWeight: '900', cursor: 'pointer', textDecoration: 'underline' }}>PRO ⭐</span> podem <strong>Digitar</strong> suas próprias frases.</span>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
