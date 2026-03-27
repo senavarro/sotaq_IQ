@@ -33,32 +33,70 @@ const getLevelInfo = (xp) => {
   return { level: isMax ? 10 : level, currentMin, nextTier: isMax ? "MAX" : nextTier, progress };
 };
 
+// 🥷 NINJA VAD & SILENCE TRIMMER IMPLEMENTED HERE
 const convertToWav = async (blob) => {
   const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
   const arrayBuffer = await blob.arrayBuffer();
   const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
   const numOfChan = audioBuffer.numberOfChannels;
-  const length = audioBuffer.length * numOfChan * 2 + 44;
+  
+  const channelData = audioBuffer.getChannelData(0);
+  let maxAmplitude = 0;
+  let startIndex = -1;
+  let endIndex = -1;
+  const threshold = 0.02; // 2% volume threshold (ignores room static)
+
+  // 1. Scan the audio to find where the actual speech starts and ends
+  for (let i = 0; i < channelData.length; i++) {
+    const val = Math.abs(channelData[i]);
+    if (val > maxAmplitude) maxAmplitude = val;
+    if (val > threshold) {
+      if (startIndex === -1) startIndex = i;
+      endIndex = i;
+    }
+  }
+
+  // 🛑 THE EMPTY ROOM BOUNCER
+  // If the loudest sound was below 2%, it's just a quiet room. Return null.
+  if (maxAmplitude < threshold || startIndex === -1) {
+    return null; 
+  }
+
+  // ✂️ THE SILENCE TRIMMER
+  // We add a tiny 0.2 second padding to the start and end so words don't sound chopped
+  const padding = 16000 * 0.2; 
+  startIndex = Math.max(0, Math.floor(startIndex - padding));
+  endIndex = Math.min(channelData.length, Math.floor(endIndex + padding));
+  const trimmedLength = endIndex - startIndex;
+
+  // Build the new, smaller WAV file
+  const length = trimmedLength * numOfChan * 2 + 44;
   const buffer = new ArrayBuffer(length);
   const view = new DataView(buffer);
-  let pos = 0, offset = 0, sample;
+  let pos = 0;
+  
   const setUint16 = (data) => { view.setUint16(pos, data, true); pos += 2; };
   const setUint32 = (data) => { view.setUint32(pos, data, true); pos += 4; };
+  
   setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); 
   setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
   setUint32(16000); setUint32(16000 * 2 * numOfChan); setUint16(numOfChan * 2);
   setUint16(16); setUint32(0x61746164); setUint32(length - pos - 4);
+  
   const channels = [];
-  for (let i = 0; i < audioBuffer.numberOfChannels; i++) channels.push(audioBuffer.getChannelData(i));
-  while (pos < length) {
+  for (let i = 0; i < numOfChan; i++) channels.push(audioBuffer.getChannelData(i));
+  
+  let offset = startIndex;
+  while (pos < length && offset < endIndex) {
     for (let i = 0; i < numOfChan; i++) {
-      sample = Math.max(-1, Math.min(1, channels[i][offset]));
+      let sample = Math.max(-1, Math.min(1, channels[i][offset]));
       sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
       view.setInt16(pos, sample, true);
       pos += 2;
     }
     offset++;
   }
+  
   return new Blob([buffer], { type: 'audio/wav' });
 };
 
@@ -97,7 +135,6 @@ export default function SotaQApp() {
   const restoreSession = async (mail) => {
     setIsLoggingIn(true);
     try {
-      // 1. Fetch from allowed_users first to verify identity and get plan
       let { data: authData, error: authErr } = await supabase.from('allowed_users').select('*').eq('email', mail).single();
       
       if (authErr || !authData) {
@@ -106,21 +143,17 @@ export default function SotaQApp() {
         return;
       }
 
-      // Clean up the plan type (handles cases where SQL inserted '''free''')
-      const cleanPlan = authData.plan_type ? authData.plan_type.replace(/'/g, "") : 'free';
+      const cleanPlan = authData.plan_type ? authData.plan_type.replace(/'/g, "").trim().toLowerCase() : 'free';
       setPlanType(cleanPlan);
 
-      // 2. Fetch daily stats from user_stats
       let { data: uStats } = await supabase.from('user_stats').select('*').eq('email', mail).single();
       
       const today = new Date().toISOString().split('T')[0];
       
       if (!uStats) {
-        // Fallback: If they are in allowed_users but missing stats somehow
         const { data: newStats } = await supabase.from('user_stats').insert([{ email: mail, daily_count: MAX_ENERGY, total_xp: 0, last_played_date: today }]).select().single();
         uStats = newStats;
       } else if (uStats.last_played_date !== today) {
-        // Daily Energy Reset Logic
         const { data: updated } = await supabase.from('user_stats').update({ daily_count: MAX_ENERGY, last_played_date: today }).eq('email', mail).select().single();
         uStats = updated;
       }
@@ -149,7 +182,6 @@ export default function SotaQApp() {
 
     setIsLoggingIn(true);
     try {
-      // 1. Check if email already exists in allowed_users
       const { data: existingUser } = await supabase.from('allowed_users').select('email').eq('email', regEmail).single();
       if (existingUser) {
         alert("Este email já está cadastrado! Por favor, faça login.");
@@ -160,7 +192,6 @@ export default function SotaQApp() {
       const fullPhone = `${regCountryCode} ${regPhone}`;
       const today = new Date().toISOString().split('T')[0];
 
-      // 2. Insert into allowed_users FIRST (Identity & Plan)
       const { error: authError } = await supabase.from('allowed_users').insert([{ 
         email: regEmail, 
         name: regName, 
@@ -169,7 +200,6 @@ export default function SotaQApp() {
       }]);
       if (authError) throw new Error("Erro de perfil: " + authError.message);
 
-      // 3. Insert into user_stats SECOND (Energy & XP - satisfying the foreign key)
       const { error: statsError } = await supabase.from('user_stats').insert([{ 
         email: regEmail, 
         daily_count: MAX_ENERGY, 
@@ -265,7 +295,19 @@ export default function SotaQApp() {
       recorder.onstop = async () => {
         setIsProcessing(true);
         const webmBlob = new Blob(chunks, { type: 'audio/webm' });
+        
+        // Convert to WAV and trim silence
         const wavBlob = await convertToWav(webmBlob); 
+        
+        // 🛑 BOUNCER ACTIVATED: If wavBlob is null, it was just background noise
+        if (!wavBlob) {
+            setFeedback({ score: 0, heard: "Nenhuma voz detectada.", msg: "Microfone muito baixo! Chegue mais perto. 🛑" });
+            setIsProcessing(false);
+            stream.getTracks().forEach(track => track.stop()); 
+            return; // We skip Azure and DO NOT deduct a life!
+        }
+
+        // Only hits Azure if valid speech was detected
         await analyzeSpeech(wavBlob);
         stream.getTracks().forEach(track => track.stop()); 
       };
@@ -285,7 +327,7 @@ export default function SotaQApp() {
     setIsRecording(false);
   };
 
-const analyzeSpeech = async (blob) => {
+  const analyzeSpeech = async (blob) => {
     const reader = new FileReader();
     reader.readAsDataURL(blob);
     reader.onloadend = async () => {
@@ -317,7 +359,7 @@ const analyzeSpeech = async (blob) => {
         wordData.forEach(w => w.phonemes?.forEach(p => allPhonemes.push({ word: w.word, sound: p.sound, score: Number(p.score) || 100 })));
         let lowestPhonemeScore = allPhonemes.length > 0 ? Math.min(...allPhonemes.map(p => p.score)) : rawAverage;
         
-
+        // 🔪 THE FLUENCY KILLSWITCH
         if (lowestPhonemeScore < 60) {
             fluency = Math.min(fluency, lowestPhonemeScore);
         }
@@ -325,23 +367,20 @@ const analyzeSpeech = async (blob) => {
         let strictScore = Math.round((rawAverage * 0.3) + (lowestPhonemeScore * 0.5) + (fluency * 0.2));
         const strictErrors = wordData.filter(w => (Number(w.accuracy) || 100) < 90).map(w => ({ ...w, worstPhoneme: w.phonemes?.reduce((prev, curr) => (Number(prev.score) < Number(curr.score)) ? prev : curr) }));
         
-        // Deduct 6 points for every badly pronounced word
         if (strictErrors.length > 0) strictScore -= (strictErrors.length * 6); 
 
         // 💥 THE MISMATCH PENALTY
-        // We strip punctuation and make it lowercase so "Water." and "water" match, but "What are" gets penalized.
         const cleanHeard = data.heard.toLowerCase().replace(/[^\w\s]/gi, '').trim();
         const cleanRef = text.toLowerCase().replace(/[^\w\s]/gi, '').trim();
         
         if (cleanHeard !== cleanRef) {
-            strictScore -= 20; // Instant 20 point drop for changing the meaning
+            strictScore -= 20; 
         }
 
         if (isNaN(strictScore)) strictScore = 0;
         strictScore = Math.max(0, Math.min(100, strictScore)); 
 
-        // 🇧🇷 FIXED BRAZILIAN BOOST
-        // Only bumps users who are between 60% and 80%, capped so they can never accidentally hit 85% without earning it.
+        // 🇧🇷 CAPPED BRAZILIAN BOOST
         if (strictScore >= 60 && strictScore <= 80) {
             strictScore += 4;
         } else if (strictScore > 95 && strictScore < 100) {
@@ -603,7 +642,7 @@ const analyzeSpeech = async (blob) => {
                 
                 {isPremiumUser ? (
                   <div style={{ display: 'flex', justifyContent: 'space-around', margin: '15px 0', padding: '10px', background: '#f8fafc', borderRadius: '12px' }}>
-                      <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Ritmo</span><strong style={{ color: '#334155' }}>{feedback.prosody}%</strong></div>
+                      <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Ritmo Bruto</span><strong style={{ color: '#334155' }}>{feedback.prosody}%</strong></div>
                       <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Fluência</span><strong style={{ color: '#334155' }}>{feedback.fluency}%</strong></div>
                   </div>
                 ) : (
