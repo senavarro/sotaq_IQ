@@ -535,8 +535,8 @@ export default function SotaQApp() {
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                 <div style={{ background: '#fef3c7', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚡</div>
                 <div>
-                  <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Energia Diária</strong>
-                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Usuários Grátis possuem <strong>7 vidas</strong> por dia. Assinantes PRO possuem Vidas Infinitas!</span>
+                <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Energia Diária</strong>
+                <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Usuários Grátis possuem <strong>7 vidas</strong> por dia. Assinantes <span onClick={() => { setShowRules(false); setShowProModal(true); }} style={{ color: '#ff6a00', fontWeight: '900', cursor: 'pointer', textDecoration: 'underline' }}>PRO ⭐</span> possuem Vidas Infinitas!</span>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
