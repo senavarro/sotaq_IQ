@@ -67,6 +67,13 @@ export default function SotaQApp() {
   const [email, setEmail] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [stats, setStats] = useState({ count: MAX_ENERGY, xp: 0 });
+  
+  // 🚀 NEW: Registration States
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [regName, setRegName] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+
   const [isCustomMode, setIsCustomMode] = useState(false);
   const [text, setText] = useState('');
   const [translation, setTranslation] = useState('');
@@ -78,7 +85,6 @@ export default function SotaQApp() {
   const [mediaRecorder, setMediaRecorder] = useState(null);
   const [recordingTimeout, setRecordingTimeout] = useState(null);
 
-  // UI States for User Menu & Pro Modal
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showProModal, setShowProModal] = useState(false);
 
@@ -103,10 +109,54 @@ export default function SotaQApp() {
         setUser(mail);
         localStorage.setItem('quevedo_vip_user', mail);
       } else {
-        alert("Usuário não encontrado.");
+        alert("Usuário não encontrado. Crie uma conta primeiro!");
       }
     } catch (err) {
-      alert("Erro na conexão.");
+      alert("Erro na conexão com o banco de dados.");
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  // 🚀 NEW: Registration Logic
+  const handleRegister = async () => {
+    if (!regName || !regPhone || !regEmail) {
+      alert("Por favor, preencha todos os campos.");
+      return;
+    }
+    setIsLoggingIn(true);
+    try {
+      // Check if email already exists
+      const { data: existingUser } = await supabase.from('user_stats').select('email').eq('email', regEmail).single();
+      if (existingUser) {
+        alert("Este email já está cadastrado! Por favor, faça login.");
+        setIsLoggingIn(false);
+        return;
+      }
+
+      // Create new user (Defaults to 'free' plan)
+      const today = new Date().toISOString().split('T')[0];
+      const { error } = await supabase.from('user_stats').insert([
+        { 
+          email: regEmail, 
+          name: regName, 
+          phone: regPhone, 
+          plan_type: 'free', 
+          daily_count: MAX_ENERGY, 
+          total_xp: 0, 
+          last_played_date: today 
+        }
+      ]);
+
+      if (error) throw error;
+
+      // Automatically log them in after successful registration
+      setStats({ count: MAX_ENERGY, xp: 0 });
+      setUser(regEmail);
+      localStorage.setItem('quevedo_vip_user', regEmail);
+      
+    } catch (err) {
+      alert("Erro ao criar a conta. Tente novamente.");
     } finally {
       setIsLoggingIn(false);
     }
@@ -118,6 +168,12 @@ export default function SotaQApp() {
     setStats({ count: MAX_ENERGY, xp: 0 });
     setFeedback(null);
     setShowUserMenu(false);
+    // Reset forms
+    setEmail('');
+    setRegEmail('');
+    setRegName('');
+    setRegPhone('');
+    setIsRegistering(false);
   };
 
   const loadRandomPhrase = () => {
@@ -219,15 +275,12 @@ export default function SotaQApp() {
         wordData.forEach(w => w.phonemes?.forEach(p => allPhonemes.push({ word: w.word, sound: p.sound, score: Number(p.score) || 100 })));
         let lowestPhonemeScore = allPhonemes.length > 0 ? Math.min(...allPhonemes.map(p => p.score)) : rawAverage;
         
-        // The Strict Math is preserved
         let strictScore = Math.round((rawAverage * 0.3) + (lowestPhonemeScore * 0.5) + (fluency * 0.2));
         const strictErrors = wordData.filter(w => (Number(w.accuracy) || 100) < 90).map(w => ({ ...w, worstPhoneme: w.phonemes?.reduce((prev, curr) => (Number(prev.score) < Number(curr.score)) ? prev : curr) }));
         if (strictErrors.length > 0) strictScore -= (strictErrors.length * 6); 
         if (isNaN(strictScore)) strictScore = 0;
         strictScore = Math.max(0, Math.min(100, strictScore)); 
 
-        // 🇧🇷 THE BRAZILIAN ENCOURAGEMENT BOOST
-        // Gives a gentle +6 bump to anyone scoring between 60% and 94% to keep morale high!
         if (strictScore >= 60 && strictScore <= 94) {
             strictScore += 6;
         } else if (strictScore > 94 && strictScore < 100) {
@@ -256,40 +309,33 @@ export default function SotaQApp() {
     };
   };
 
-// Reusable Paywall Component with the Comparison Table
   const ProPaywall = () => (
     <div style={{ background: 'linear-gradient(135deg, #1a2a6c 0%, #b21f1f 100%)', padding: '30px', borderRadius: '24px', color: 'white', textAlign: 'center', marginBottom: '20px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', position: 'relative' }}>
-        {/* Close Button for Manual Trigger */}
         {!isOutOfEnergy && (
             <button onClick={() => setShowProModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>X</button>
         )}
         <h2 style={{ fontSize: '1.8rem', fontWeight: '900', margin: '0 0 10px 0' }}>{isOutOfEnergy ? "Vidas Esgotadas! ⚡" : "SotaQ PRO ⭐"}</h2>
         <p style={{ fontSize: '0.95rem', opacity: 0.9, marginBottom: '20px' }}>Domine seu sotaque e treine sem limites.</p>
         
-        {/* 📊 THE NEW COMPARISON TABLE */}
         <div style={{ background: 'rgba(0, 0, 0, 0.2)', borderRadius: '16px', padding: '15px', marginBottom: '20px', textAlign: 'left', fontSize: '0.85rem', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
             <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: '10px', marginBottom: '12px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 <div style={{ flex: 1, color: '#cbd5e1' }}>SotaQ Free</div>
                 <div style={{ flex: 1, color: '#fbbf24' }}>SotaQ PRO ⭐</div>
             </div>
-            
             <div style={{ display: 'flex', marginBottom: '12px', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1, paddingRight: '10px', color: '#94a3b8' }}>❌ 7 vidas por dia</div>
                 <div style={{ flex: 1, color: 'white', fontWeight: 'bold' }}>✅ Vidas Infinitas ⚡</div>
             </div>
-            
             <div style={{ display: 'flex', marginBottom: '12px', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1, paddingRight: '10px', color: '#94a3b8' }}>❌ Apenas frases prontas</div>
                 <div style={{ flex: 1, color: 'white', fontWeight: 'bold' }}>✅ Criar próprias frases + Refazer erros (&lt;75%) ✍️</div>
             </div>
-            
             <div style={{ display: 'flex', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1, paddingRight: '10px', color: '#94a3b8' }}>❌ Nota de Precisão</div>
                 <div style={{ flex: 1, color: 'white', fontWeight: 'bold' }}>✅ Precisão + Ritmo + Fluência 📊</div>
             </div>
         </div>
 
-        {/* PRICING & CTA */}
         <div style={{ background: 'rgba(255,255,255,0.1)', padding: '15px', borderRadius: '16px', marginBottom: '20px' }}>
             <p style={{ margin: '0', fontSize: '0.9rem', textDecoration: 'line-through', opacity: 0.6 }}>R$ 239,88 / ano</p>
             <p style={{ margin: '5px 0', fontSize: '1.5rem', fontWeight: '900', color: '#fbbf24' }}>R$ 199,00 <span style={{fontSize: '0.8rem', color: 'white', fontWeight: 'normal'}}>Anual</span></p>
@@ -303,17 +349,57 @@ export default function SotaQApp() {
     </div>
   );
 
+  // 🚀 NEW: Registration vs Login Render Block
   if (!user) {
+    if (isRegistering) {
+      return (
+        <div style={{ background: '#f0f4f8', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif', padding: '20px' }}>
+          <div style={{ background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', width: '100%', maxWidth: '400px', animation: 'fadeIn 0.3s' }}>
+            <div style={{ textAlign: 'center', marginBottom: '25px' }}>
+              <h1 style={{ color: '#1a2a6c', fontWeight: '900', fontSize: '2.2rem', margin: '0 0 5px 0' }}>SotaQ AI</h1>
+              <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Crie sua conta gratuitamente.</p>
+            </div>
+            
+            <input type="text" value={regName} onChange={(e) => setRegName(e.target.value)} placeholder="Seu Nome Completo..." style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', marginBottom: '15px', outline: 'none' }} />
+            <input type="tel" value={regPhone} onChange={(e) => setRegPhone(e.target.value)} placeholder="Seu WhatsApp..." style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', marginBottom: '15px', outline: 'none' }} />
+            <input type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} placeholder="Seu Email..." style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', marginBottom: '20px', outline: 'none' }} />
+            
+            <button onClick={handleRegister} disabled={isLoggingIn || !regName || !regPhone || !regEmail} style={{ width: '100%', background: (isLoggingIn || !regName || !regPhone || !regEmail) ? '#cbd5e1' : '#10b981', color: 'white', padding: '15px', borderRadius: '12px', border: 'none', fontWeight: '900', fontSize: '1.1rem', cursor: 'pointer', marginBottom: '15px', transition: '0.2s' }}>
+              {isLoggingIn ? 'CADASTRANDO...' : 'CADASTRAR'}
+            </button>
+            
+            <div style={{ textAlign: 'center' }}>
+                <button onClick={() => setIsRegistering(false)} style={{ background: 'none', border: 'none', color: '#64748b', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'underline' }}>
+                    Já tem conta? Faça Login
+                </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Default Login Screen
     return (
       <div style={{ background: '#f0f4f8', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif', padding: '20px' }}>
-        <div style={{ background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', width: '100%', maxWidth: '400px' }}>
+        <div style={{ background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', width: '100%', maxWidth: '400px', animation: 'fadeIn 0.3s' }}>
           <div style={{ textAlign: 'center', marginBottom: '30px' }}>
             <h1 style={{ color: '#1a2a6c', fontWeight: '900', fontSize: '2.2rem', margin: '0 0 5px 0' }}>SotaQ AI</h1>
-            <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Login</p>
+            <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Login (Versão Gratuita)</p>
           </div>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Seu email..." style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', marginBottom: '15px', outline: 'none' }} />
-          <button onClick={() => restoreSession(email)} disabled={isLoggingIn || !email} style={{ width: '100%', background: isLoggingIn ? '#cbd5e1' : '#ff6a00', color: 'white', padding: '15px', borderRadius: '12px', border: 'none', fontWeight: '800', fontSize: '1.1rem', cursor: 'pointer' }}>
+          
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Seu email..." style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', marginBottom: '20px', outline: 'none' }} />
+          
+          <button onClick={() => restoreSession(email)} disabled={isLoggingIn || !email} style={{ width: '100%', background: isLoggingIn ? '#cbd5e1' : '#ff6a00', color: 'white', padding: '15px', borderRadius: '12px', border: 'none', fontWeight: '900', fontSize: '1.1rem', cursor: 'pointer', marginBottom: '15px', transition: '0.2s' }}>
             {isLoggingIn ? 'ENTRANDO...' : 'ENTRAR'}
+          </button>
+
+          <div style={{ position: 'relative', textAlign: 'center', margin: '20px 0' }}>
+            <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0' }} />
+            <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: 'white', padding: '0 10px', color: '#94a3b8', fontSize: '0.85rem', fontWeight: 'bold' }}>OU</span>
+          </div>
+
+          <button onClick={() => setIsRegistering(true)} style={{ width: '100%', background: '#f1f5f9', color: '#0f172a', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontWeight: '900', fontSize: '1.1rem', cursor: 'pointer', transition: '0.2s' }}>
+            CRIAR CONTA NOVA
           </button>
         </div>
       </div>
@@ -323,7 +409,6 @@ export default function SotaQApp() {
   const level = getLevelInfo(stats.xp);
   const isOutOfEnergy = stats.count <= 0;
 
-  // Preserve the Avançar Button Logic
   let actionButtonProps = { text: '🎤 PRATICAR', bg: '#1a2a6c', onClick: startRecording, disabled: !text || text.trim().length === 0 };
   if (isProcessing) {
     actionButtonProps = { text: '⏳ AVALIANDO...', bg: '#f59e0b', onClick: null, disabled: true };
@@ -336,66 +421,50 @@ export default function SotaQApp() {
   return (
     <div style={{ background: '#f0f4f8', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
       
-
       {showRules && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(4px)' }}>
           <div style={{ background: 'white', padding: '30px', borderRadius: '24px', maxWidth: '400px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.3)', animation: 'fadeIn 0.3s' }}>
-            
             <div style={{ textAlign: 'center', marginBottom: '25px' }}>
                 <h3 style={{ marginTop: 0, color: '#1a2a6c', fontWeight: '900', fontSize: '1.5rem', marginBottom: '5px' }}>📖 Como Funciona?</h3>
                 <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>Domine seu sotaque com a IA mais rigorosa do mercado.</p>
             </div>
-            
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '30px' }}>
-              
-              {/* Regra 1: Energia */}
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                 <div style={{ background: '#fef3c7', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚡</div>
                 <div>
                   <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Energia Diária</strong>
-                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Você tem <strong>7 vidas gratuitas</strong> por dia. Cada tentativa de gravação consome 1 vida.</span>
+                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Você tem <strong>7 vidas gratuitas</strong> por dia. Cada tentativa consome 1 vida.</span>
                 </div>
               </div>
-
-
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                 <div style={{ background: '#e0e7ff', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✍️</div>
                 <div>
                   <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Modos de Treino</strong>
-                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Gere frases <strong>Aleatórias</strong> ou clique em <strong>Digitar</strong> para simular apresentações e entrevistas reais.</span>
+                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Gere frases <strong>Aleatórias</strong> ou clique em <strong>Digitar</strong>.</span>
                 </div>
               </div>
-
-
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                 <div style={{ background: '#dcfce7', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🔊</div>
                 <div>
                   <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Calibre seu Ouvido</strong>
-                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Use o botão <strong>Ouvir</strong> para escutar a pronúncia e o ritmo nativo antes de gastar sua energia.</span>
+                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Escute a pronúncia nativa antes de gastar sua energia.</span>
                 </div>
               </div>
-
-
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                 <div style={{ background: '#fee2e2', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🎯</div>
                 <div>
                   <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Raio-X Implacável</strong>
-                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Nossa IA avalia sílabas microscópicas. Se você substituir um "Th" por "F", ela vai apontar o erro!</span>
+                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Nossa IA avalia sílabas microscópicas para apontar seu erro exato!</span>
                 </div>
               </div>
-
             </div>
-
-            <button 
-              onClick={() => setShowRules(false)} 
-              style={{ width: '100%', padding: '16px', background: '#1a2a6c', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '1.05rem', cursor: 'pointer', boxShadow: '0 10px 15px -3px rgba(26, 42, 108, 0.3)', transition: '0.2s' }}
-            >
+            <button onClick={() => setShowRules(false)} style={{ width: '100%', padding: '16px', background: '#1a2a6c', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '1.05rem', cursor: 'pointer', boxShadow: '0 10px 15px -3px rgba(26, 42, 108, 0.3)', transition: '0.2s' }}>
               ENTENDI, VAMOS LÁ! 🚀
             </button>
           </div>
         </div>
       )}
-      {/* HEADER WITH UNIFIED DROPDOWN */}
+
       <nav style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '450px', margin: '0 auto' }}>
         <div onClick={() => setShowUserMenu(!showUserMenu)} style={{ cursor: 'pointer', position: 'relative' }}>
             <h1 style={{ fontSize: '1.2rem', fontWeight: '900', color: '#1a2a6c', margin: 0 }}>SotaQ <span style={{fontSize: '0.7rem', color: '#ff6a00', verticalAlign: 'middle'}}>FREE</span> ▼</h1>
@@ -425,7 +494,6 @@ export default function SotaQApp() {
             <div style={{ width: `${level.progress}%`, height: '100%', background: 'linear-gradient(90deg, #1a2a6c, #ff6a00)' }} />
           </div>
         </div>
-
 
         {(isOutOfEnergy || showProModal) && <ProPaywall />}
 
