@@ -65,13 +65,13 @@ const convertToWav = async (blob) => {
 export default function SotaQApp() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
-  const [planType, setPlanType] = useState('free'); // NEW: Tracks user tier
+  const [planType, setPlanType] = useState('free');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [stats, setStats] = useState({ count: MAX_ENERGY, xp: 0 });
   
   const [isRegistering, setIsRegistering] = useState(false);
   const [regName, setRegName] = useState('');
-  const [regCountryCode, setRegCountryCode] = useState('+55'); // NEW: Country Code
+  const [regCountryCode, setRegCountryCode] = useState('+55');
   const [regPhone, setRegPhone] = useState('');
   const [regEmail, setRegEmail] = useState('');
 
@@ -97,30 +97,26 @@ export default function SotaQApp() {
   const restoreSession = async (mail) => {
     setIsLoggingIn(true);
     try {
-      // 1. Fetch from allowed_users first to verify identity and get plan
-      let { data: authData, error: authErr } = await supabase.from('allowed_users').select('*').eq('email', mail).single();
+      // 🚨 FIX: Fetch EVERYTHING from user_stats only
+      let { data: uStats, error } = await supabase.from('user_stats').select('*').eq('email', mail).single();
       
-      if (authErr || !authData) {
+      if (error || !uStats) {
         alert("Email não encontrado. Por favor, crie uma conta!");
         setIsLoggingIn(false);
         return;
       }
 
-      // Clean up the plan type (handles cases where SQL inserted '''free''')
-      const cleanPlan = authData.plan_type ? authData.plan_type.replace(/'/g, "") : 'free';
+      // Handle the plan type
+      const cleanPlan = uStats.plan_type ? uStats.plan_type.replace(/'/g, "") : 'free';
       setPlanType(cleanPlan);
-
-      // 2. Fetch daily stats from user_stats
-      let { data: uStats } = await supabase.from('user_stats').select('*').eq('email', mail).single();
       
       const today = new Date().toISOString().split('T')[0];
       
-      if (!uStats) {
-        // If they are in allowed_users but missing stats, create the stats row
-        const { data: newStats } = await supabase.from('user_stats').insert([{ email: mail, daily_count: MAX_ENERGY, total_xp: 0, last_played_date: today }]).select().single();
-        uStats = newStats;
-      } else if (uStats.last_played_date !== today) {
-        const { data: updated } = await supabase.from('user_stats').update({ daily_count: MAX_ENERGY, last_played_date: today }).eq('email', mail).select().single();
+      // Daily Energy Reset Logic
+      if (uStats.last_played_date !== today) {
+        const { data: updated } = await supabase.from('user_stats')
+          .update({ daily_count: MAX_ENERGY, last_played_date: today })
+          .eq('email', mail).select().single();
         uStats = updated;
       }
 
@@ -148,7 +144,8 @@ export default function SotaQApp() {
 
     setIsLoggingIn(true);
     try {
-      const { data: existingUser } = await supabase.from('allowed_users').select('email').eq('email', regEmail).single();
+      // 🚨 FIX: Check uniqueness in user_stats
+      const { data: existingUser } = await supabase.from('user_stats').select('email').eq('email', regEmail).single();
       if (existingUser) {
         alert("Este email já está cadastrado! Por favor, faça login.");
         setIsLoggingIn(false);
@@ -158,23 +155,18 @@ export default function SotaQApp() {
       const fullPhone = `${regCountryCode} ${regPhone}`;
       const today = new Date().toISOString().split('T')[0];
 
-      // Insert into allowed_users (Identity)
-      const { error: authError } = await supabase.from('allowed_users').insert([{ 
-        email: regEmail, 
-        name: regName, 
-        phone: fullPhone, 
-        plan_type: 'free' 
-      }]);
-      if (authError) throw new Error("Erro Allowed Users: " + authError.message);
-
-      // Insert into user_stats (Energy/XP)
+      // 🚨 FIX: Single Insert into user_stats with all info
       const { error: statsError } = await supabase.from('user_stats').insert([{ 
-        email: regEmail, 
+        email: regEmail,
+        name: regName,
+        phone: fullPhone,
+        plan_type: 'free',
         daily_count: MAX_ENERGY, 
         total_xp: 0, 
         last_played_date: today 
       }]);
-      if (statsError) throw new Error("Erro User Stats: " + statsError.message);
+
+      if (statsError) throw new Error("Erro ao criar conta: " + statsError.message);
 
       setPlanType('free');
       setStats({ count: MAX_ENERGY, xp: 0 });
@@ -182,7 +174,7 @@ export default function SotaQApp() {
       localStorage.setItem('quevedo_vip_user', regEmail);
       
     } catch (err) {
-      alert("Erro ao criar a conta: " + err.message);
+      alert(err.message);
     } finally {
       setIsLoggingIn(false);
     }
@@ -210,7 +202,6 @@ export default function SotaQApp() {
     setTranslation(typeof item === 'object' ? item.pt : '');
   };
 
-  // NEW: Protect the Custom Mode
   const handleCustomModeClick = () => {
     if (planType !== 'premium' && planType !== 'pro') {
         setShowProModal(true);
@@ -403,7 +394,6 @@ export default function SotaQApp() {
             
             <input type="text" value={regName} onChange={(e) => setRegName(e.target.value)} placeholder="Seu Nome Completo..." style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', marginBottom: '15px', outline: 'none' }} />
             
-            {/* Phone Input with Country Code */}
             <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
               <select value={regCountryCode} onChange={(e) => setRegCountryCode(e.target.value)} style={{ width: '35%', padding: '15px 10px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', outline: 'none', background: 'white' }}>
                 <option value="+55">🇧🇷 +55</option>
@@ -468,7 +458,6 @@ export default function SotaQApp() {
     actionButtonProps = { text: '🛑 PARAR (MÁX 5s)', bg: '#ef4444', onClick: stopRecording, disabled: false };
   } else if (feedback) {
     if (isPremiumUser && feedback.score < 75) {
-      // PRO PERK: Retry Weak Sentences
       actionButtonProps = { text: '✨ TENTAR DE NOVO', bg: '#10b981', onClick: () => setFeedback(null), disabled: false };
     } else if (feedback.score >= 85) {
       actionButtonProps = { text: isCustomMode ? '✨ TENTAR DE NOVO' : '⏩ AVANÇAR', bg: '#10b981', onClick: isCustomMode ? () => setFeedback(null) : loadRandomPhrase, disabled: false };
@@ -566,7 +555,6 @@ export default function SotaQApp() {
             <div style={{ background: 'white', borderRadius: '30px', padding: '30px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.05)', textAlign: 'center', marginBottom: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
                     <button onClick={loadRandomPhrase} style={{ background: !isCustomMode ? '#ff6a00' : '#f1f5f9', color: !isCustomMode ? 'white' : '#64748b', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer', transition: '0.2s' }}>🎲 ALEATÓRIA</button>
-                    {/* NEW: Protected Digitar Button */}
                     <button onClick={handleCustomModeClick} style={{ background: isCustomMode ? '#ff6a00' : '#f1f5f9', color: isCustomMode ? 'white' : '#64748b', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer', transition: '0.2s' }}>
                       {isPremiumUser ? '✍️ DIGITAR' : '🔒 DIGITAR'}
                     </button>
@@ -582,10 +570,9 @@ export default function SotaQApp() {
                 <p style={{ fontWeight: '900', color: '#1a2a6c', margin: '0 0 5px 0', fontSize: '1.4rem' }}>{feedback.score}% Precisão</p>
                 <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '0 0 15px 0', fontStyle: 'italic' }}>🗣️ IA ouviu: "{feedback.heard}"</p>
                 
-                {/* 🚨 THE LOCKED FEEDBACK FOR FREE USERS */}
                 {isPremiumUser ? (
                   <div style={{ display: 'flex', justifyContent: 'space-around', margin: '15px 0', padding: '10px', background: '#f8fafc', borderRadius: '12px' }}>
-                      <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Ritmo</span><strong style={{ color: '#334155' }}>{feedback.prosody}%</strong></div>
+                      <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Ritmo Bruto</span><strong style={{ color: '#334155' }}>{feedback.prosody}%</strong></div>
                       <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Fluência</span><strong style={{ color: '#334155' }}>{feedback.fluency}%</strong></div>
                   </div>
                 ) : (
