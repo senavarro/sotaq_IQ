@@ -65,12 +65,13 @@ const convertToWav = async (blob) => {
 export default function SotaQApp() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
+  const [planType, setPlanType] = useState('free'); // NEW: Tracks user tier
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [stats, setStats] = useState({ count: MAX_ENERGY, xp: 0 });
   
-  // 🚀 NEW: Registration States
   const [isRegistering, setIsRegistering] = useState(false);
   const [regName, setRegName] = useState('');
+  const [regCountryCode, setRegCountryCode] = useState('+55'); // NEW: Country Code
   const [regPhone, setRegPhone] = useState('');
   const [regEmail, setRegEmail] = useState('');
 
@@ -96,67 +97,92 @@ export default function SotaQApp() {
   const restoreSession = async (mail) => {
     setIsLoggingIn(true);
     try {
-      let { data: uStats } = await supabase.from('user_stats').select('*').eq('email', mail).single();
-      if (uStats) {
-        const today = new Date().toISOString().split('T')[0];
-        if (uStats.last_played_date !== today) {
-          const { data: updated } = await supabase.from('user_stats')
-            .update({ daily_count: MAX_ENERGY, last_played_date: today })
-            .eq('email', mail).select().single();
-          uStats = updated;
-        }
-        setStats({ count: Math.min(uStats.daily_count, MAX_ENERGY), xp: uStats.total_xp });
-        setUser(mail);
-        localStorage.setItem('quevedo_vip_user', mail);
-      } else {
-        alert("Usuário não encontrado. Crie uma conta primeiro!");
+      // 1. Fetch from allowed_users first to verify identity and get plan
+      let { data: authData, error: authErr } = await supabase.from('allowed_users').select('*').eq('email', mail).single();
+      
+      if (authErr || !authData) {
+        alert("Email não encontrado. Por favor, crie uma conta!");
+        setIsLoggingIn(false);
+        return;
       }
+
+      // Clean up the plan type (handles cases where SQL inserted '''free''')
+      const cleanPlan = authData.plan_type ? authData.plan_type.replace(/'/g, "") : 'free';
+      setPlanType(cleanPlan);
+
+      // 2. Fetch daily stats from user_stats
+      let { data: uStats } = await supabase.from('user_stats').select('*').eq('email', mail).single();
+      
+      const today = new Date().toISOString().split('T')[0];
+      
+      if (!uStats) {
+        // If they are in allowed_users but missing stats, create the stats row
+        const { data: newStats } = await supabase.from('user_stats').insert([{ email: mail, daily_count: MAX_ENERGY, total_xp: 0, last_played_date: today }]).select().single();
+        uStats = newStats;
+      } else if (uStats.last_played_date !== today) {
+        const { data: updated } = await supabase.from('user_stats').update({ daily_count: MAX_ENERGY, last_played_date: today }).eq('email', mail).select().single();
+        uStats = updated;
+      }
+
+      setStats({ count: Math.min(uStats.daily_count, MAX_ENERGY), xp: uStats.total_xp });
+      setUser(mail);
+      localStorage.setItem('quevedo_vip_user', mail);
     } catch (err) {
-      alert("Erro na conexão com o banco de dados.");
+      alert("Erro na conexão com o banco de dados: " + err.message);
     } finally {
       setIsLoggingIn(false);
     }
   };
 
-  // 🚀 NEW: Registration Logic
   const handleRegister = async () => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    
     if (!regName || !regPhone || !regEmail) {
       alert("Por favor, preencha todos os campos.");
       return;
     }
+    if (!emailRegex.test(regEmail)) {
+      alert("Por favor, insira um email válido.");
+      return;
+    }
+
     setIsLoggingIn(true);
     try {
-      // Check if email already exists
-      const { data: existingUser } = await supabase.from('user_stats').select('email').eq('email', regEmail).single();
+      const { data: existingUser } = await supabase.from('allowed_users').select('email').eq('email', regEmail).single();
       if (existingUser) {
         alert("Este email já está cadastrado! Por favor, faça login.");
         setIsLoggingIn(false);
         return;
       }
 
-      // Create new user (Defaults to 'free' plan)
+      const fullPhone = `${regCountryCode} ${regPhone}`;
       const today = new Date().toISOString().split('T')[0];
-      const { error } = await supabase.from('user_stats').insert([
-        { 
-          email: regEmail, 
-          name: regName, 
-          phone: regPhone, 
-          plan_type: 'free', 
-          daily_count: MAX_ENERGY, 
-          total_xp: 0, 
-          last_played_date: today 
-        }
-      ]);
 
-      if (error) throw error;
+      // Insert into allowed_users (Identity)
+      const { error: authError } = await supabase.from('allowed_users').insert([{ 
+        email: regEmail, 
+        name: regName, 
+        phone: fullPhone, 
+        plan_type: 'free' 
+      }]);
+      if (authError) throw new Error("Erro Allowed Users: " + authError.message);
 
-      // Automatically log them in after successful registration
+      // Insert into user_stats (Energy/XP)
+      const { error: statsError } = await supabase.from('user_stats').insert([{ 
+        email: regEmail, 
+        daily_count: MAX_ENERGY, 
+        total_xp: 0, 
+        last_played_date: today 
+      }]);
+      if (statsError) throw new Error("Erro User Stats: " + statsError.message);
+
+      setPlanType('free');
       setStats({ count: MAX_ENERGY, xp: 0 });
       setUser(regEmail);
       localStorage.setItem('quevedo_vip_user', regEmail);
       
     } catch (err) {
-      alert("Erro ao criar a conta. Tente novamente.");
+      alert("Erro ao criar a conta: " + err.message);
     } finally {
       setIsLoggingIn(false);
     }
@@ -165,10 +191,10 @@ export default function SotaQApp() {
   const handleLogout = () => {
     localStorage.removeItem('quevedo_vip_user');
     setUser(null);
+    setPlanType('free');
     setStats({ count: MAX_ENERGY, xp: 0 });
     setFeedback(null);
     setShowUserMenu(false);
-    // Reset forms
     setEmail('');
     setRegEmail('');
     setRegName('');
@@ -182,6 +208,15 @@ export default function SotaQApp() {
     const item = curatedPhrases[Math.floor(Math.random() * curatedPhrases.length)];
     setText(typeof item === 'object' ? item.en : item);
     setTranslation(typeof item === 'object' ? item.pt : '');
+  };
+
+  // NEW: Protect the Custom Mode
+  const handleCustomModeClick = () => {
+    if (planType !== 'premium' && planType !== 'pro') {
+        setShowProModal(true);
+        return;
+    }
+    enableCustomMode();
   };
 
   const enableCustomMode = () => {
@@ -216,7 +251,8 @@ export default function SotaQApp() {
   };
 
   const startRecording = async () => {
-    if (stats.count <= 0) {
+    const isPremium = planType === 'premium' || planType === 'pro';
+    if (!isPremium && stats.count <= 0) {
       setShowProModal(true);
       return; 
     }
@@ -263,11 +299,14 @@ export default function SotaQApp() {
         const rawAverage = Number(data.score) || 0;
         const fluency = Number(data.fluency) || 0;
         const wordData = Array.isArray(data.words) ? data.words : [];
+        const isPremium = planType === 'premium' || planType === 'pro';
         
         if (wordData.length === 0 || !data.heard) {
             setFeedback({ score: 0, heard: "Nenhuma voz detectada.", msg: "Não ouvimos você! 🛑" });
-            const newCount = stats.count - 1; setStats({ ...stats, count: newCount });
-            await supabase.from('user_stats').update({ daily_count: newCount }).eq('email', user);
+            if (!isPremium) {
+                const newCount = stats.count - 1; setStats({ ...stats, count: newCount });
+                await supabase.from('user_stats').update({ daily_count: newCount }).eq('email', user);
+            }
             setIsProcessing(false); return;
         }
 
@@ -301,17 +340,20 @@ export default function SotaQApp() {
         });
         
         if (stars === 3) confetti();
+        
         const newXP = stats.xp + (stars * 10);
-        const newCount = stats.count - 1; 
+        let newCount = stats.count;
+        if (!isPremium) newCount = stats.count - 1; // Only deduct if free
+        
         setStats({ count: newCount, xp: newXP });
         await supabase.from('user_stats').update({ daily_count: newCount, total_xp: newXP }).eq('email', user);
-      } catch (err) { alert("Erro ao analisar."); } finally { setIsProcessing(false); }
+      } catch (err) { alert("Erro ao analisar: " + err.message); } finally { setIsProcessing(false); }
     };
   };
 
   const ProPaywall = () => (
-    <div style={{ background: 'linear-gradient(135deg, #1a2a6c 0%, #b21f1f 100%)', padding: '30px', borderRadius: '24px', color: 'white', textAlign: 'center', marginBottom: '20px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', position: 'relative' }}>
-        {!isOutOfEnergy && (
+    <div style={{ background: 'linear-gradient(135deg, #1a2a6c 0%, #b21f1f 100%)', padding: '30px', borderRadius: '24px', color: 'white', textAlign: 'center', marginBottom: '20px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', position: 'relative', animation: 'fadeIn 0.3s' }}>
+        {(!isOutOfEnergy || planType === 'premium' || planType === 'pro') && (
             <button onClick={() => setShowProModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>X</button>
         )}
         <h2 style={{ fontSize: '1.8rem', fontWeight: '900', margin: '0 0 10px 0' }}>{isOutOfEnergy ? "Vidas Esgotadas! ⚡" : "SotaQ PRO ⭐"}</h2>
@@ -349,7 +391,6 @@ export default function SotaQApp() {
     </div>
   );
 
-  // 🚀 NEW: Registration vs Login Render Block
   if (!user) {
     if (isRegistering) {
       return (
@@ -361,7 +402,18 @@ export default function SotaQApp() {
             </div>
             
             <input type="text" value={regName} onChange={(e) => setRegName(e.target.value)} placeholder="Seu Nome Completo..." style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', marginBottom: '15px', outline: 'none' }} />
-            <input type="tel" value={regPhone} onChange={(e) => setRegPhone(e.target.value)} placeholder="Seu WhatsApp..." style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', marginBottom: '15px', outline: 'none' }} />
+            
+            {/* Phone Input with Country Code */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+              <select value={regCountryCode} onChange={(e) => setRegCountryCode(e.target.value)} style={{ width: '35%', padding: '15px 10px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', outline: 'none', background: 'white' }}>
+                <option value="+55">🇧🇷 +55</option>
+                <option value="+1">🇺🇸 +1</option>
+                <option value="+351">🇵🇹 +351</option>
+                <option value="+44">🇬🇧 +44</option>
+              </select>
+              <input type="tel" value={regPhone} onChange={(e) => setRegPhone(e.target.value.replace(/\D/g, ''))} placeholder="DDD + Número" style={{ width: '65%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', outline: 'none' }} />
+            </div>
+
             <input type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} placeholder="Seu Email..." style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', marginBottom: '20px', outline: 'none' }} />
             
             <button onClick={handleRegister} disabled={isLoggingIn || !regName || !regPhone || !regEmail} style={{ width: '100%', background: (isLoggingIn || !regName || !regPhone || !regEmail) ? '#cbd5e1' : '#10b981', color: 'white', padding: '15px', borderRadius: '12px', border: 'none', fontWeight: '900', fontSize: '1.1rem', cursor: 'pointer', marginBottom: '15px', transition: '0.2s' }}>
@@ -378,13 +430,12 @@ export default function SotaQApp() {
       );
     }
 
-    // Default Login Screen
     return (
       <div style={{ background: '#f0f4f8', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif', padding: '20px' }}>
         <div style={{ background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', width: '100%', maxWidth: '400px', animation: 'fadeIn 0.3s' }}>
           <div style={{ textAlign: 'center', marginBottom: '30px' }}>
             <h1 style={{ color: '#1a2a6c', fontWeight: '900', fontSize: '2.2rem', margin: '0 0 5px 0' }}>SotaQ AI</h1>
-            <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Login (Versão Gratuita)</p>
+            <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Acesse sua conta para treinar.</p>
           </div>
           
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Seu email..." style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '12px', border: '2px solid #e2e8f0', fontSize: '1rem', marginBottom: '20px', outline: 'none' }} />
@@ -407,15 +458,21 @@ export default function SotaQApp() {
   }
 
   const level = getLevelInfo(stats.xp);
-  const isOutOfEnergy = stats.count <= 0;
+  const isPremiumUser = planType === 'premium' || planType === 'pro';
+  const isOutOfEnergy = !isPremiumUser && stats.count <= 0;
 
   let actionButtonProps = { text: '🎤 PRATICAR', bg: '#1a2a6c', onClick: startRecording, disabled: !text || text.trim().length === 0 };
   if (isProcessing) {
     actionButtonProps = { text: '⏳ AVALIANDO...', bg: '#f59e0b', onClick: null, disabled: true };
   } else if (isRecording) {
     actionButtonProps = { text: '🛑 PARAR (MÁX 5s)', bg: '#ef4444', onClick: stopRecording, disabled: false };
-  } else if (feedback && feedback.score >= 85) {
-    actionButtonProps = { text: isCustomMode ? '✨ TENTAR DE NOVO' : '⏩ AVANÇAR', bg: '#10b981', onClick: isCustomMode ? () => setFeedback(null) : loadRandomPhrase, disabled: false };
+  } else if (feedback) {
+    if (isPremiumUser && feedback.score < 75) {
+      // PRO PERK: Retry Weak Sentences
+      actionButtonProps = { text: '✨ TENTAR DE NOVO', bg: '#10b981', onClick: () => setFeedback(null), disabled: false };
+    } else if (feedback.score >= 85) {
+      actionButtonProps = { text: isCustomMode ? '✨ TENTAR DE NOVO' : '⏩ AVANÇAR', bg: '#10b981', onClick: isCustomMode ? () => setFeedback(null) : loadRandomPhrase, disabled: false };
+    }
   }
 
   return (
@@ -433,21 +490,21 @@ export default function SotaQApp() {
                 <div style={{ background: '#fef3c7', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚡</div>
                 <div>
                   <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Energia Diária</strong>
-                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Você tem <strong>7 vidas gratuitas</strong> por dia. Cada tentativa consome 1 vida.</span>
+                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Usuários Grátis possuem <strong>7 vidas</strong> por dia. Assinantes PRO possuem Vidas Infinitas!</span>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                 <div style={{ background: '#e0e7ff', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✍️</div>
                 <div>
                   <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Modos de Treino</strong>
-                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Gere frases <strong>Aleatórias</strong> ou clique em <strong>Digitar</strong>.</span>
+                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Gere frases <strong>Aleatórias</strong>. Usuários PRO podem <strong>Digitar</strong> suas próprias frases.</span>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
                 <div style={{ background: '#dcfce7', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🔊</div>
                 <div>
                   <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Calibre seu Ouvido</strong>
-                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Escute a pronúncia nativa antes de gastar sua energia.</span>
+                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Escute a pronúncia nativa antes de gravar.</span>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
@@ -467,11 +524,13 @@ export default function SotaQApp() {
 
       <nav style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '450px', margin: '0 auto' }}>
         <div onClick={() => setShowUserMenu(!showUserMenu)} style={{ cursor: 'pointer', position: 'relative' }}>
-            <h1 style={{ fontSize: '1.2rem', fontWeight: '900', color: '#1a2a6c', margin: 0 }}>SotaQ <span style={{fontSize: '0.7rem', color: '#ff6a00', verticalAlign: 'middle'}}>FREE</span> ▼</h1>
+            <h1 style={{ fontSize: '1.2rem', fontWeight: '900', color: '#1a2a6c', margin: 0 }}>
+              SotaQ {isPremiumUser ? <span style={{fontSize: '0.8rem', color: '#fbbf24', verticalAlign: 'middle'}}>PRO ⭐</span> : <span style={{fontSize: '0.7rem', color: '#ff6a00', verticalAlign: 'middle'}}>FREE</span>} ▼
+            </h1>
             
             {showUserMenu && (
                 <div style={{ position: 'absolute', top: '30px', left: 0, background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px', boxShadow: '0 10px 15px rgba(0,0,0,0.1)', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <button onClick={() => { setShowProModal(true); setShowUserMenu(false); }} style={{ background: '#ff6a00', color: 'white', border: 'none', borderRadius: '8px', padding: '10px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap', textAlign: 'center' }}>⭐ Upgrade PRO</button>
+                    {!isPremiumUser && <button onClick={() => { setShowProModal(true); setShowUserMenu(false); }} style={{ background: '#ff6a00', color: 'white', border: 'none', borderRadius: '8px', padding: '10px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap', textAlign: 'center' }}>⭐ Upgrade PRO</button>}
                     <button onClick={handleLogout} style={{ background: '#fef2f2', border: 'none', color: '#ef4444', borderRadius: '8px', padding: '10px', fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap', textAlign: 'center' }}>Sair da Conta 🚪</button>
                 </div>
             )}
@@ -479,7 +538,7 @@ export default function SotaQApp() {
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           <button onClick={() => setShowRules(true)} style={{ background: 'transparent', border: 'none', fontSize: '0.8rem', fontWeight: '800', color: '#64748b', cursor: 'pointer' }}>Regras</button>
           <div style={{ background: 'white', padding: '8px 16px', borderRadius: '50px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontWeight: '800', color: '#1a2a6c' }}>
-            ⚡ {stats.count}/{MAX_ENERGY}
+            {isPremiumUser ? '⚡ ∞' : `⚡ ${stats.count}/${MAX_ENERGY}`}
           </div>
         </div>
       </nav>
@@ -507,10 +566,13 @@ export default function SotaQApp() {
             <div style={{ background: 'white', borderRadius: '30px', padding: '30px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.05)', textAlign: 'center', marginBottom: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
                     <button onClick={loadRandomPhrase} style={{ background: !isCustomMode ? '#ff6a00' : '#f1f5f9', color: !isCustomMode ? 'white' : '#64748b', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer', transition: '0.2s' }}>🎲 ALEATÓRIA</button>
-                    <button onClick={enableCustomMode} style={{ background: isCustomMode ? '#ff6a00' : '#f1f5f9', color: isCustomMode ? 'white' : '#64748b', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer', transition: '0.2s' }}>✍️ DIGITAR</button>
+                    {/* NEW: Protected Digitar Button */}
+                    <button onClick={handleCustomModeClick} style={{ background: isCustomMode ? '#ff6a00' : '#f1f5f9', color: isCustomMode ? 'white' : '#64748b', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer', transition: '0.2s' }}>
+                      {isPremiumUser ? '✍️ DIGITAR' : '🔒 DIGITAR'}
+                    </button>
                     <button onClick={playAudio} disabled={!text || text.trim() === ''} style={{ background: '#1a2a6c', color: 'white', border: 'none', padding: '8px 14px', borderRadius: '50px', fontWeight: '900', fontSize: '0.7rem', cursor: 'pointer', opacity: text ? 1 : 0.5 }}>🔊 OUVIR</button>
                 </div>
-                {isCustomMode ? <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Digite em inglês..." maxLength={100} style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '16px', border: '2px dashed #cbd5e1', fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center', minHeight: '100px', outline: 'none', resize: 'none' }} /> : 
+                {isCustomMode && isPremiumUser ? <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Digite em inglês..." maxLength={100} style={{ width: '100%', boxSizing: 'border-box', padding: '15px', borderRadius: '16px', border: '2px dashed #cbd5e1', fontSize: '1.2rem', fontWeight: 'bold', textAlign: 'center', minHeight: '100px', outline: 'none', resize: 'none' }} /> : 
                 <><h2 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0f172a', margin: '0 0 10px 0' }}>{text || "Escolha uma frase..."}</h2>{translation && <p style={{ color: '#94a3b8', fontStyle: 'italic', margin: 0 }}>🇧🇷 "{translation}"</p>}</>}
             </div>
 
@@ -520,10 +582,18 @@ export default function SotaQApp() {
                 <p style={{ fontWeight: '900', color: '#1a2a6c', margin: '0 0 5px 0', fontSize: '1.4rem' }}>{feedback.score}% Precisão</p>
                 <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '0 0 15px 0', fontStyle: 'italic' }}>🗣️ IA ouviu: "{feedback.heard}"</p>
                 
-                <div style={{ display: 'flex', justifyContent: 'space-around', margin: '15px 0', padding: '10px', background: '#f8fafc', borderRadius: '12px' }}>
-                    <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Ritmo Bruto</span><strong style={{ color: '#334155' }}>{feedback.prosody}%</strong></div>
-                    <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Fluência</span><strong style={{ color: '#334155' }}>{feedback.fluency}%</strong></div>
-                </div>
+                {/* 🚨 THE LOCKED FEEDBACK FOR FREE USERS */}
+                {isPremiumUser ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-around', margin: '15px 0', padding: '10px', background: '#f8fafc', borderRadius: '12px' }}>
+                      <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Ritmo</span><strong style={{ color: '#334155' }}>{feedback.prosody}%</strong></div>
+                      <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Fluência</span><strong style={{ color: '#334155' }}>{feedback.fluency}%</strong></div>
+                  </div>
+                ) : (
+                  <div onClick={() => setShowProModal(true)} style={{ margin: '15px 0', padding: '15px', background: '#f8fafc', borderRadius: '12px', cursor: 'pointer', border: '1px dashed #cbd5e1', opacity: 0.8 }}>
+                      <span style={{ display: 'block', fontWeight: 'bold', color: '#64748b', fontSize: '0.9rem' }}>🔒 Ritmo & Fluência Ocultos</span>
+                      <span style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>Toque para assinar o SotaQ PRO</span>
+                  </div>
+                )}
 
                 {feedback.errors?.length > 0 ? (
                   <div style={{ marginTop: '15px', background: '#fef2f2', padding: '10px', borderRadius: '12px', border: '1px solid #fca5a5' }}>
