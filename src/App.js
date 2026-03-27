@@ -97,26 +97,31 @@ export default function SotaQApp() {
   const restoreSession = async (mail) => {
     setIsLoggingIn(true);
     try {
-      // 🚨 FIX: Fetch EVERYTHING from user_stats only
-      let { data: uStats, error } = await supabase.from('user_stats').select('*').eq('email', mail).single();
+      // 1. Fetch from allowed_users first to verify identity and get plan
+      let { data: authData, error: authErr } = await supabase.from('allowed_users').select('*').eq('email', mail).single();
       
-      if (error || !uStats) {
+      if (authErr || !authData) {
         alert("Email não encontrado. Por favor, crie uma conta!");
         setIsLoggingIn(false);
         return;
       }
 
-      // Handle the plan type
-      const cleanPlan = uStats.plan_type ? uStats.plan_type.replace(/'/g, "") : 'free';
+      // Clean up the plan type (handles cases where SQL inserted '''free''')
+      const cleanPlan = authData.plan_type ? authData.plan_type.replace(/'/g, "") : 'free';
       setPlanType(cleanPlan);
+
+      // 2. Fetch daily stats from user_stats
+      let { data: uStats } = await supabase.from('user_stats').select('*').eq('email', mail).single();
       
       const today = new Date().toISOString().split('T')[0];
       
-      // Daily Energy Reset Logic
-      if (uStats.last_played_date !== today) {
-        const { data: updated } = await supabase.from('user_stats')
-          .update({ daily_count: MAX_ENERGY, last_played_date: today })
-          .eq('email', mail).select().single();
+      if (!uStats) {
+        // Fallback: If they are in allowed_users but missing stats somehow
+        const { data: newStats } = await supabase.from('user_stats').insert([{ email: mail, daily_count: MAX_ENERGY, total_xp: 0, last_played_date: today }]).select().single();
+        uStats = newStats;
+      } else if (uStats.last_played_date !== today) {
+        // Daily Energy Reset Logic
+        const { data: updated } = await supabase.from('user_stats').update({ daily_count: MAX_ENERGY, last_played_date: today }).eq('email', mail).select().single();
         uStats = updated;
       }
 
@@ -144,8 +149,8 @@ export default function SotaQApp() {
 
     setIsLoggingIn(true);
     try {
-      // 🚨 FIX: Check uniqueness in user_stats
-      const { data: existingUser } = await supabase.from('user_stats').select('email').eq('email', regEmail).single();
+      // 1. Check if email already exists in allowed_users
+      const { data: existingUser } = await supabase.from('allowed_users').select('email').eq('email', regEmail).single();
       if (existingUser) {
         alert("Este email já está cadastrado! Por favor, faça login.");
         setIsLoggingIn(false);
@@ -155,18 +160,23 @@ export default function SotaQApp() {
       const fullPhone = `${regCountryCode} ${regPhone}`;
       const today = new Date().toISOString().split('T')[0];
 
-      // 🚨 FIX: Single Insert into user_stats with all info
+      // 2. Insert into allowed_users FIRST (Identity & Plan)
+      const { error: authError } = await supabase.from('allowed_users').insert([{ 
+        email: regEmail, 
+        name: regName, 
+        phone: fullPhone, 
+        plan_type: 'free' 
+      }]);
+      if (authError) throw new Error("Erro de perfil: " + authError.message);
+
+      // 3. Insert into user_stats SECOND (Energy & XP - satisfying the foreign key)
       const { error: statsError } = await supabase.from('user_stats').insert([{ 
-        email: regEmail,
-        name: regName,
-        phone: fullPhone,
-        plan_type: 'free',
+        email: regEmail, 
         daily_count: MAX_ENERGY, 
         total_xp: 0, 
         last_played_date: today 
       }]);
-
-      if (statsError) throw new Error("Erro ao criar conta: " + statsError.message);
+      if (statsError) throw new Error("Erro de status: " + statsError.message);
 
       setPlanType('free');
       setStats({ count: MAX_ENERGY, xp: 0 });
@@ -174,7 +184,7 @@ export default function SotaQApp() {
       localStorage.setItem('quevedo_vip_user', regEmail);
       
     } catch (err) {
-      alert(err.message);
+      alert("Erro ao criar a conta: " + err.message);
     } finally {
       setIsLoggingIn(false);
     }
@@ -334,7 +344,7 @@ export default function SotaQApp() {
         
         const newXP = stats.xp + (stars * 10);
         let newCount = stats.count;
-        if (!isPremium) newCount = stats.count - 1; // Only deduct if free
+        if (!isPremium) newCount = stats.count - 1; 
         
         setStats({ count: newCount, xp: newXP });
         await supabase.from('user_stats').update({ daily_count: newCount, total_xp: newXP }).eq('email', user);
@@ -572,7 +582,7 @@ export default function SotaQApp() {
                 
                 {isPremiumUser ? (
                   <div style={{ display: 'flex', justifyContent: 'space-around', margin: '15px 0', padding: '10px', background: '#f8fafc', borderRadius: '12px' }}>
-                      <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Ritmo Bruto</span><strong style={{ color: '#334155' }}>{feedback.prosody}%</strong></div>
+                      <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Ritmo</span><strong style={{ color: '#334155' }}>{feedback.prosody}%</strong></div>
                       <div><span style={{ display: 'block', fontSize: '0.7rem', color: '#64748b', fontWeight: 'bold', textTransform: 'uppercase' }}>Fluência</span><strong style={{ color: '#334155' }}>{feedback.fluency}%</strong></div>
                   </div>
                 ) : (
