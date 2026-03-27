@@ -33,7 +33,6 @@ const getLevelInfo = (xp) => {
   return { level: isMax ? 10 : level, currentMin, nextTier: isMax ? "MAX" : nextTier, progress };
 };
 
-// 🥷 NINJA VAD & SILENCE TRIMMER IMPLEMENTED HERE
 const convertToWav = async (blob) => {
   const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
   const arrayBuffer = await blob.arrayBuffer();
@@ -44,9 +43,8 @@ const convertToWav = async (blob) => {
   let maxAmplitude = 0;
   let startIndex = -1;
   let endIndex = -1;
-  const threshold = 0.02; // 2% volume threshold (ignores room static)
+  const threshold = 0.02;
 
-  // 1. Scan the audio to find where the actual speech starts and ends
   for (let i = 0; i < channelData.length; i++) {
     const val = Math.abs(channelData[i]);
     if (val > maxAmplitude) maxAmplitude = val;
@@ -56,20 +54,15 @@ const convertToWav = async (blob) => {
     }
   }
 
-  // 🛑 THE EMPTY ROOM BOUNCER
-  // If the loudest sound was below 2%, it's just a quiet room. Return null.
   if (maxAmplitude < threshold || startIndex === -1) {
     return null; 
   }
 
-  // ✂️ THE SILENCE TRIMMER
-  // We add a tiny 0.2 second padding to the start and end so words don't sound chopped
   const padding = 16000 * 0.2; 
   startIndex = Math.max(0, Math.floor(startIndex - padding));
   endIndex = Math.min(channelData.length, Math.floor(endIndex + padding));
   const trimmedLength = endIndex - startIndex;
 
-  // Build the new, smaller WAV file
   const length = trimmedLength * numOfChan * 2 + 44;
   const buffer = new ArrayBuffer(length);
   const view = new DataView(buffer);
@@ -296,18 +289,15 @@ export default function SotaQApp() {
         setIsProcessing(true);
         const webmBlob = new Blob(chunks, { type: 'audio/webm' });
         
-        // Convert to WAV and trim silence
         const wavBlob = await convertToWav(webmBlob); 
         
-        // 🛑 BOUNCER ACTIVATED: If wavBlob is null, it was just background noise
         if (!wavBlob) {
             setFeedback({ score: 0, heard: "Nenhuma voz detectada.", msg: "Microfone muito baixo! Chegue mais perto. 🛑" });
             setIsProcessing(false);
             stream.getTracks().forEach(track => track.stop()); 
-            return; // We skip Azure and DO NOT deduct a life!
+            return; 
         }
 
-        // Only hits Azure if valid speech was detected
         await analyzeSpeech(wavBlob);
         stream.getTracks().forEach(track => track.stop()); 
       };
@@ -359,7 +349,6 @@ export default function SotaQApp() {
         wordData.forEach(w => w.phonemes?.forEach(p => allPhonemes.push({ word: w.word, sound: p.sound, score: Number(p.score) || 100 })));
         let lowestPhonemeScore = allPhonemes.length > 0 ? Math.min(...allPhonemes.map(p => p.score)) : rawAverage;
         
-        // 🔪 THE FLUENCY KILLSWITCH
         if (lowestPhonemeScore < 60) {
             fluency = Math.min(fluency, lowestPhonemeScore);
         }
@@ -369,7 +358,6 @@ export default function SotaQApp() {
         
         if (strictErrors.length > 0) strictScore -= (strictErrors.length * 6); 
 
-        // 💥 THE MISMATCH PENALTY
         const cleanHeard = data.heard.toLowerCase().replace(/[^\w\s]/gi, '').trim();
         const cleanRef = text.toLowerCase().replace(/[^\w\s]/gi, '').trim();
         
@@ -380,7 +368,6 @@ export default function SotaQApp() {
         if (isNaN(strictScore)) strictScore = 0;
         strictScore = Math.max(0, Math.min(100, strictScore)); 
 
-        // 🇧🇷 CAPPED BRAZILIAN BOOST
         if (strictScore >= 60 && strictScore <= 80) {
             strictScore += 4;
         } else if (strictScore > 95 && strictScore < 100) {
@@ -683,6 +670,18 @@ export default function SotaQApp() {
             <button onClick={actionButtonProps.onClick} disabled={actionButtonProps.disabled} style={{ width: '100%', padding: '24px', borderRadius: '24px', border: 'none', background: actionButtonProps.bg, color: 'white', fontWeight: '900', fontSize: '1.1rem', cursor: actionButtonProps.disabled ? 'not-allowed' : 'pointer', boxShadow: actionButtonProps.bg === '#ef4444' ? '0 0 15px rgba(239, 68, 68, 0.5)' : '0 10px 15px -3px rgba(0,0,0,0.1)', transition: 'all 0.3s', opacity: actionButtonProps.disabled ? 0.7 : 1 }}>
               {actionButtonProps.text}
             </button>
+
+            {/* 🎓 THE HIGH-TICKET ACADEMY FUNNEL */}
+            <div style={{ marginTop: '30px', textAlign: 'center', padding: '20px', background: 'white', borderRadius: '24px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.05)' }}>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: '0 0 10px 0', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Quer destravar sua fluência de vez?
+              </p>
+              <a href="https://idiomasquevedo.netlify.app/" target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', background: 'linear-gradient(90deg, #1a2a6c, #ff6a00)', color: 'white', padding: '14px', borderRadius: '16px', textDecoration: 'none', fontWeight: '900', fontSize: '1rem', transition: '0.2s' }}>
+                <span>🎓 Conheça a Idiomas Quevedo</span>
+                <span style={{ fontSize: '1.2rem' }}>➔</span>
+              </a>
+            </div>
+
           </>
         )}
       </div>
