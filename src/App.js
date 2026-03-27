@@ -285,7 +285,7 @@ export default function SotaQApp() {
     setIsRecording(false);
   };
 
-  const analyzeSpeech = async (blob) => {
+const analyzeSpeech = async (blob) => {
     const reader = new FileReader();
     reader.readAsDataURL(blob);
     reader.onloadend = async () => {
@@ -298,7 +298,9 @@ export default function SotaQApp() {
         if (!response.ok) throw new Error("Erro na API");
         const data = await response.json();
         const rawAverage = Number(data.score) || 0;
-        const fluency = Number(data.fluency) || 0;
+        
+        let fluency = Number(data.fluency) || 0; 
+        
         const wordData = Array.isArray(data.words) ? data.words : [];
         const isPremium = planType === 'premium' || planType === 'pro';
         
@@ -315,15 +317,34 @@ export default function SotaQApp() {
         wordData.forEach(w => w.phonemes?.forEach(p => allPhonemes.push({ word: w.word, sound: p.sound, score: Number(p.score) || 100 })));
         let lowestPhonemeScore = allPhonemes.length > 0 ? Math.min(...allPhonemes.map(p => p.score)) : rawAverage;
         
+
+        if (lowestPhonemeScore < 60) {
+            fluency = Math.min(fluency, lowestPhonemeScore);
+        }
+
         let strictScore = Math.round((rawAverage * 0.3) + (lowestPhonemeScore * 0.5) + (fluency * 0.2));
         const strictErrors = wordData.filter(w => (Number(w.accuracy) || 100) < 90).map(w => ({ ...w, worstPhoneme: w.phonemes?.reduce((prev, curr) => (Number(prev.score) < Number(curr.score)) ? prev : curr) }));
+        
+        // Deduct 6 points for every badly pronounced word
         if (strictErrors.length > 0) strictScore -= (strictErrors.length * 6); 
+
+        // 💥 THE MISMATCH PENALTY
+        // We strip punctuation and make it lowercase so "Water." and "water" match, but "What are" gets penalized.
+        const cleanHeard = data.heard.toLowerCase().replace(/[^\w\s]/gi, '').trim();
+        const cleanRef = text.toLowerCase().replace(/[^\w\s]/gi, '').trim();
+        
+        if (cleanHeard !== cleanRef) {
+            strictScore -= 20; // Instant 20 point drop for changing the meaning
+        }
+
         if (isNaN(strictScore)) strictScore = 0;
         strictScore = Math.max(0, Math.min(100, strictScore)); 
 
-        if (strictScore >= 60 && strictScore <= 94) {
-            strictScore += 6;
-        } else if (strictScore > 94 && strictScore < 100) {
+        // 🇧🇷 FIXED BRAZILIAN BOOST
+        // Only bumps users who are between 60% and 80%, capped so they can never accidentally hit 85% without earning it.
+        if (strictScore >= 60 && strictScore <= 80) {
+            strictScore += 4;
+        } else if (strictScore > 95 && strictScore < 100) {
             strictScore = 99;
         }
         strictScore = Math.min(100, strictScore);
