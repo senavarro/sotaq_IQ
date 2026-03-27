@@ -256,24 +256,50 @@ export default function SotaQApp() {
     };
   };
 
-  // Reusable Paywall Component
+// Reusable Paywall Component with the Comparison Table
   const ProPaywall = () => (
     <div style={{ background: 'linear-gradient(135deg, #1a2a6c 0%, #b21f1f 100%)', padding: '30px', borderRadius: '24px', color: 'white', textAlign: 'center', marginBottom: '20px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', position: 'relative' }}>
         {/* Close Button for Manual Trigger */}
         {!isOutOfEnergy && (
-            <button onClick={() => setShowProModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', fontWeight: 'bold' }}>X</button>
+            <button onClick={() => setShowProModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'rgba(255,255,255,0.2)', border: 'none', color: 'white', borderRadius: '50%', width: '30px', height: '30px', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}>X</button>
         )}
         <h2 style={{ fontSize: '1.8rem', fontWeight: '900', margin: '0 0 10px 0' }}>{isOutOfEnergy ? "Vidas Esgotadas! ⚡" : "SotaQ PRO ⭐"}</h2>
-        <p style={{ fontSize: '1rem', opacity: 0.9, marginBottom: '20px' }}>Quer treinar sem limites e dominar seu sotaque hoje mesmo?</p>
-        <div style={{ background: 'rgba(255,255,255,0.1)', padding: '20px', borderRadius: '16px', marginBottom: '25px' }}>
-            <p style={{ margin: '0', fontSize: '0.9rem', textDecoration: 'line-through', opacity: 0.6 }}>R$ 239,88 / ano</p>
-            <p style={{ margin: '5px 0', fontSize: '1.4rem', fontWeight: '900' }}>R$ 199,00 <span style={{fontSize: '0.8rem'}}>Anual</span></p>
-            <p style={{ margin: '0', fontSize: '1rem', fontWeight: '700' }}>ou R$ 19,99 <span style={{fontSize: '0.8rem'}}>Mensal</span></p>
+        <p style={{ fontSize: '0.95rem', opacity: 0.9, marginBottom: '20px' }}>Domine seu sotaque e treine sem limites.</p>
+        
+        {/* 📊 THE NEW COMPARISON TABLE */}
+        <div style={{ background: 'rgba(0, 0, 0, 0.2)', borderRadius: '16px', padding: '15px', marginBottom: '20px', textAlign: 'left', fontSize: '0.85rem', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+            <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: '10px', marginBottom: '12px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                <div style={{ flex: 1, color: '#cbd5e1' }}>SotaQ Free</div>
+                <div style={{ flex: 1, color: '#fbbf24' }}>SotaQ PRO ⭐</div>
+            </div>
+            
+            <div style={{ display: 'flex', marginBottom: '12px', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, paddingRight: '10px', color: '#94a3b8' }}>❌ 7 vidas por dia</div>
+                <div style={{ flex: 1, color: 'white', fontWeight: 'bold' }}>✅ Vidas Infinitas ⚡</div>
+            </div>
+            
+            <div style={{ display: 'flex', marginBottom: '12px', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, paddingRight: '10px', color: '#94a3b8' }}>❌ Apenas frases prontas</div>
+                <div style={{ flex: 1, color: 'white', fontWeight: 'bold' }}>✅ Criar próprias frases + Refazer erros (&lt;75%) ✍️</div>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, paddingRight: '10px', color: '#94a3b8' }}>❌ Nota de Precisão</div>
+                <div style={{ flex: 1, color: 'white', fontWeight: 'bold' }}>✅ Precisão + Ritmo + Fluência 📊</div>
+            </div>
         </div>
-        <a href="https://wa.me/553198011835?text=Olá!%20Quero%20fazer%20o%20upgrade%20para%20o%20SotaQ%20PRO" target="_blank" rel="noreferrer" style={{ display: 'block', background: '#25D366', color: 'white', padding: '18px', borderRadius: '14px', textDecoration: 'none', fontWeight: '900', fontSize: '1.1rem', boxShadow: '0 10px 15px rgba(0,0,0,0.2)' }}>
-            QUERO ENERGIA INFINITA 🚀
+
+        {/* PRICING & CTA */}
+        <div style={{ background: 'rgba(255,255,255,0.1)', padding: '15px', borderRadius: '16px', marginBottom: '20px' }}>
+            <p style={{ margin: '0', fontSize: '0.9rem', textDecoration: 'line-through', opacity: 0.6 }}>R$ 239,88 / ano</p>
+            <p style={{ margin: '5px 0', fontSize: '1.5rem', fontWeight: '900', color: '#fbbf24' }}>R$ 199,00 <span style={{fontSize: '0.8rem', color: 'white', fontWeight: 'normal'}}>Anual</span></p>
+            <p style={{ margin: '0', fontSize: '0.95rem', fontWeight: '700' }}>ou apenas R$ 19,99 <span style={{fontSize: '0.75rem', fontWeight: 'normal'}}>Mensal</span></p>
+        </div>
+        
+        <a href="https://wa.me/553198011835?text=Olá!%20Quero%20fazer%20o%20upgrade%20para%20o%20SotaQ%20PRO" target="_blank" rel="noreferrer" style={{ display: 'block', background: '#25D366', color: 'white', padding: '16px', borderRadius: '14px', textDecoration: 'none', fontWeight: '900', fontSize: '1.1rem', boxShadow: '0 10px 15px rgba(0,0,0,0.2)', transition: '0.2s' }}>
+            QUERO SER PRO 🚀
         </a>
-        <p style={{ marginTop: '15px', fontSize: '0.75rem', opacity: 0.7 }}>Ativação imediata via WhatsApp</p>
+        <p style={{ marginTop: '12px', marginBottom: 0, fontSize: '0.75rem', opacity: 0.7 }}>Ativação imediata via suporte no WhatsApp</p>
     </div>
   );
 
@@ -310,20 +336,65 @@ export default function SotaQApp() {
   return (
     <div style={{ background: '#f0f4f8', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
       
+
       {showRules && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div style={{ background: 'white', padding: '30px', borderRadius: '24px', maxWidth: '400px', width: '100%' }}>
-            <h3 style={{ marginTop: 0, color: '#1a2a6c', fontWeight: '900' }}>📖 Regras</h3>
-            <ul style={{ paddingLeft: '20px', fontSize: '0.9rem', color: '#475569' }}>
-              <li>⚡ 1 gravação = 1 vida.</li>
-              <li>🎯 Nota baseada em sílabas microscópicas.</li>
-              <li>💎 Versão Gratuita: Limite de 7 vidas/dia.</li>
-            </ul>
-            <button onClick={() => setShowRules(false)} style={{ width: '100%', padding: '15px', background: '#ff6a00', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800' }}>OK</button>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(4px)' }}>
+          <div style={{ background: 'white', padding: '30px', borderRadius: '24px', maxWidth: '400px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.3)', animation: 'fadeIn 0.3s' }}>
+            
+            <div style={{ textAlign: 'center', marginBottom: '25px' }}>
+                <h3 style={{ marginTop: 0, color: '#1a2a6c', fontWeight: '900', fontSize: '1.5rem', marginBottom: '5px' }}>📖 Como Funciona?</h3>
+                <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>Domine seu sotaque com a IA mais rigorosa do mercado.</p>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '30px' }}>
+              
+              {/* Regra 1: Energia */}
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                <div style={{ background: '#fef3c7', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚡</div>
+                <div>
+                  <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Energia Diária</strong>
+                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Você tem <strong>7 vidas gratuitas</strong> por dia. Cada tentativa de gravação consome 1 vida.</span>
+                </div>
+              </div>
+
+
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                <div style={{ background: '#e0e7ff', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✍️</div>
+                <div>
+                  <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Modos de Treino</strong>
+                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Gere frases <strong>Aleatórias</strong> ou clique em <strong>Digitar</strong> para simular apresentações e entrevistas reais.</span>
+                </div>
+              </div>
+
+
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                <div style={{ background: '#dcfce7', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🔊</div>
+                <div>
+                  <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Calibre seu Ouvido</strong>
+                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Use o botão <strong>Ouvir</strong> para escutar a pronúncia e o ritmo nativo antes de gastar sua energia.</span>
+                </div>
+              </div>
+
+
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                <div style={{ background: '#fee2e2', padding: '10px', borderRadius: '12px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🎯</div>
+                <div>
+                  <strong style={{ color: '#0f172a', display: 'block', fontSize: '1rem', marginBottom: '2px' }}>Raio-X Implacável</strong>
+                  <span style={{ color: '#475569', fontSize: '0.85rem', lineHeight: '1.4', display: 'block' }}>Nossa IA avalia sílabas microscópicas. Se você substituir um "Th" por "F", ela vai apontar o erro!</span>
+                </div>
+              </div>
+
+            </div>
+
+            <button 
+              onClick={() => setShowRules(false)} 
+              style={{ width: '100%', padding: '16px', background: '#1a2a6c', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '900', fontSize: '1.05rem', cursor: 'pointer', boxShadow: '0 10px 15px -3px rgba(26, 42, 108, 0.3)', transition: '0.2s' }}
+            >
+              ENTENDI, VAMOS LÁ! 🚀
+            </button>
           </div>
         </div>
       )}
-
       {/* HEADER WITH UNIFIED DROPDOWN */}
       <nav style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '450px', margin: '0 auto' }}>
         <div onClick={() => setShowUserMenu(!showUserMenu)} style={{ cursor: 'pointer', position: 'relative' }}>
@@ -355,7 +426,7 @@ export default function SotaQApp() {
           </div>
         </div>
 
-        {/* PAYWALL TRIGGERED BY ZERO LIVES OR DROPDOWN */}
+
         {(isOutOfEnergy || showProModal) && <ProPaywall />}
 
         {(!isOutOfEnergy && !showProModal) && (
