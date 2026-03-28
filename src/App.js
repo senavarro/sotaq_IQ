@@ -482,6 +482,9 @@ export default function SotaQApp() {
         <div style={{ background: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)', width: '100%', maxWidth: '400px', animation: 'fadeIn 0.3s' }}>
           <div style={{ textAlign: 'center', marginBottom: '30px' }}>
             <h1 style={{ color: '#1a2a6c', fontWeight: '900', fontSize: '2.2rem', margin: '0 0 5px 0' }}>SotaQ AI</h1>
+            <p style={{ color: '#ff6a00', fontWeight: '800', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 8px 0' }}>
+                Teste seu sotaque, melhore e compita com seus amigos!
+            </p>
             <p style={{ color: '#64748b', fontSize: '0.95rem' }}>Acesse sua conta para treinar.</p>
           </div>
           
