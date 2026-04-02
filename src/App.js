@@ -6,6 +6,13 @@ import { curatedPhrases } from './phraseBank';
 const MAX_ENERGY = 7;
 const MAX_RECORDING_TIME = 5000;
 
+// Helper Functions in Global Scope
+const getLocalTodayDate = () => {
+  const d = new Date();
+  // Forces the format YYYY-MM-DD based on the user's actual phone/computer timezone
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const getPhonemeTip = (phoneme) => {
   const tips = {
     'θ': "Língua entre os dentes soprando o ar (não é som de 'f' nem 's').",
@@ -27,11 +34,6 @@ const getLevelInfo = (xp) => {
   for (let i = 0; i < thresholds.length; i++) {
     if (xp >= thresholds[i]) { level = i + 1; currentMin = thresholds[i]; }
   }
-  const getLocalTodayDate = () => {
-  const d = new Date();
-  // Forces the format YYYY-MM-DD based on the user's actual phone/computer timezone
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
   const isMax = level >= thresholds.length;
   const nextTier = isMax ? currentMin : thresholds[level];
   const progress = isMax ? 100 : ((xp - currentMin) / (nextTier - currentMin)) * 100;
@@ -279,7 +281,7 @@ export default function SotaQApp() {
     }
   };
 
-const startRecording = async () => {
+  const startRecording = async () => {
     const isPremium = planType === 'premium' || planType === 'pro';
     
     // 🧟 ZOMBIE TAB FIX: If they are out of energy, double-check the DB before blocking them
