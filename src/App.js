@@ -27,6 +27,11 @@ const getLevelInfo = (xp) => {
   for (let i = 0; i < thresholds.length; i++) {
     if (xp >= thresholds[i]) { level = i + 1; currentMin = thresholds[i]; }
   }
+  const getLocalTodayDate = () => {
+  const d = new Date();
+  // Forces the format YYYY-MM-DD based on the user's actual phone/computer timezone
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
   const isMax = level >= thresholds.length;
   const nextTier = isMax ? currentMin : thresholds[level];
   const progress = isMax ? 100 : ((xp - currentMin) / (nextTier - currentMin)) * 100;
@@ -141,7 +146,7 @@ export default function SotaQApp() {
 
       let { data: uStats } = await supabase.from('user_stats').select('*').eq('email', mail).single();
       
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalTodayDate();
       
       if (!uStats) {
         const { data: newStats } = await supabase.from('user_stats').insert([{ email: mail, daily_count: MAX_ENERGY, total_xp: 0, last_played_date: today }]).select().single();
@@ -183,7 +188,7 @@ export default function SotaQApp() {
       }
 
       const fullPhone = `${regCountryCode} ${regPhone}`;
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalTodayDate();
 
       const { error: authError } = await supabase.from('allowed_users').insert([{ 
         email: regEmail, 
@@ -274,12 +279,31 @@ export default function SotaQApp() {
     }
   };
 
-  const startRecording = async () => {
+const startRecording = async () => {
     const isPremium = planType === 'premium' || planType === 'pro';
+    
+    // 🧟 ZOMBIE TAB FIX: If they are out of energy, double-check the DB before blocking them
     if (!isPremium && stats.count <= 0) {
-      setShowProModal(true);
-      return; 
+      try {
+        const today = getLocalTodayDate();
+        let { data: checkStats } = await supabase.from('user_stats').select('*').eq('email', user).single();
+        
+        // If the day actually rolled over while the app was asleep, give them their lives!
+        if (checkStats && checkStats.last_played_date !== today) {
+           const { data: updated } = await supabase.from('user_stats').update({ daily_count: MAX_ENERGY, last_played_date: today }).eq('email', user).select().single();
+           setStats({ count: MAX_ENERGY, xp: updated.total_xp });
+           // We don't return here, we let them proceed to record!
+        } else {
+           // It's still the same day. Block them.
+           setShowProModal(true);
+           return; 
+        }
+      } catch (err) {
+        setShowProModal(true);
+        return;
+      }
     }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
