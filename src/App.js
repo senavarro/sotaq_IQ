@@ -132,6 +132,44 @@ export default function SotaQApp() {
     if (saved) restoreSession(saved);
   }, []);
 
+  // ⚡ THE "WAKE UP" CHECK (ZOMBIE TAB KILLER)
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && user) {
+        const today = getLocalTodayDate();
+        
+        try {
+          let { data: currentStats } = await supabase
+            .from('user_stats')
+            .select('last_played_date, total_xp, daily_count')
+            .eq('email', user)
+            .single();
+            
+          // If the date in the database is older than today, refill lives instantly!
+          if (currentStats && currentStats.last_played_date !== today) {
+            const { data: updatedStats } = await supabase
+              .from('user_stats')
+              .update({ daily_count: MAX_ENERGY, last_played_date: today })
+              .eq('email', user)
+              .select()
+              .single();
+              
+            // Instantly update UI when they switch back to the app
+            setStats({ 
+              count: MAX_ENERGY, 
+              xp: updatedStats.total_xp 
+            });
+          }
+        } catch (err) {
+          console.log("Background sync error:", err);
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [user]);
+
   const restoreSession = async (mail) => {
     setIsLoggingIn(true);
     try {
@@ -284,19 +322,16 @@ export default function SotaQApp() {
   const startRecording = async () => {
     const isPremium = planType === 'premium' || planType === 'pro';
     
-    // 🧟 ZOMBIE TAB FIX: If they are out of energy, double-check the DB before blocking them
+    // I left your original DB check here as a secondary fallback, just to be safe!
     if (!isPremium && stats.count <= 0) {
       try {
         const today = getLocalTodayDate();
         let { data: checkStats } = await supabase.from('user_stats').select('*').eq('email', user).single();
         
-        // If the day actually rolled over while the app was asleep, give them their lives!
         if (checkStats && checkStats.last_played_date !== today) {
            const { data: updated } = await supabase.from('user_stats').update({ daily_count: MAX_ENERGY, last_played_date: today }).eq('email', user).select().single();
            setStats({ count: MAX_ENERGY, xp: updated.total_xp });
-           // We don't return here, we let them proceed to record!
         } else {
-           // It's still the same day. Block them.
            setShowProModal(true);
            return; 
         }
