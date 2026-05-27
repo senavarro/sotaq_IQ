@@ -10,40 +10,42 @@ exports.handler = async (event) => {
     const speechConfig = sdk.SpeechConfig.fromSubscription(process.env.AZURE_SPEECH_KEY, process.env.AZURE_SPEECH_REGION);
     speechConfig.speechRecognitionLanguage = locale || "en-US";
 
-    // --- PASS 1: Free Recognition (honest "heard") ---
-    const pushStream1 = sdk.AudioInputStream.createPushStream();
-    pushStream1.write(audioBuffer);
-    pushStream1.close();
-    const audioConfig1 = sdk.AudioConfig.fromStreamInput(pushStream1);
-    const recognizer1 = new sdk.SpeechRecognizer(speechConfig, audioConfig1);
+    // --- BOTH PASSES IN PARALLEL ---
+    const [freeResult, assessedResult] = await Promise.all([
 
-    const freeResult = await new Promise((resolve, reject) => {
-      recognizer1.recognizeOnceAsync(res => resolve(res), err => reject(err));
-    });
+      // Pass 1: Free recognition (honest "heard")
+      new Promise((resolve, reject) => {
+        const pushStream = sdk.AudioInputStream.createPushStream();
+        pushStream.write(audioBuffer);
+        pushStream.close();
+        const audioConfig = sdk.AudioConfig.fromStreamInput(pushStream);
+        const recognizer = new sdk.SpeechRecognizer(speechConfig, audioConfig);
+        recognizer.recognizeOnceAsync(res => resolve(res), err => reject(err));
+      }),
+
+      // Pass 2: Pronunciation assessment (scores + phonemes)
+      new Promise((resolve, reject) => {
+        const pronConfig = new sdk.PronunciationAssessmentConfig(
+          referenceText,
+          sdk.PronunciationAssessmentGradingSystem.HundredMark,
+          sdk.PronunciationAssessmentGranularity.Phoneme,
+          true
+        );
+        pronConfig.enableProsody = true;
+
+        const pushStream = sdk.AudioInputStream.createPushStream();
+        pushStream.write(audioBuffer);
+        pushStream.close();
+        const audioConfig = sdk.AudioConfig.fromStreamInput(pushStream);
+        const recognizer = new sdk.SpeechRecognizer(speechConfig, audioConfig);
+        pronConfig.applyTo(recognizer);
+        recognizer.recognizeOnceAsync(res => resolve(res), err => reject(err));
+      })
+
+    ]);
 
     const honestHeard = freeResult.text || "";
-
-    // --- PASS 2: Pronunciation Assessment (scores + phonemes) ---
-    const pronConfig = new sdk.PronunciationAssessmentConfig(
-      referenceText,
-      sdk.PronunciationAssessmentGradingSystem.HundredMark,
-      sdk.PronunciationAssessmentGranularity.Phoneme,
-      true
-    );
-    pronConfig.enableProsody = true;
-
-    const pushStream2 = sdk.AudioInputStream.createPushStream();
-    pushStream2.write(audioBuffer);
-    pushStream2.close();
-    const audioConfig2 = sdk.AudioConfig.fromStreamInput(pushStream2);
-    const recognizer2 = new sdk.SpeechRecognizer(speechConfig, audioConfig2);
-    pronConfig.applyTo(recognizer2);
-
-    const rawResult = await new Promise((resolve, reject) => {
-      recognizer2.recognizeOnceAsync(res => resolve(res), err => reject(err));
-    });
-
-    const assessmentResult = sdk.PronunciationAssessmentResult.fromResult(rawResult);
+    const assessmentResult = sdk.PronunciationAssessmentResult.fromResult(assessedResult);
 
     const wordScores = assessmentResult.detailResult.Words.map(w => {
       const phons = w.Phonemes ? w.Phonemes.map(p => ({
@@ -63,7 +65,7 @@ exports.handler = async (event) => {
         score: Math.round(assessmentResult.accuracyScore),
         fluency: Math.round(assessmentResult.fluencyScore),
         prosody: Math.round(assessmentResult.prosodyScore || assessmentResult.accuracyScore),
-        heard: honestHeard, // ← honest transcription, not force-aligned
+        heard: honestHeard,
         words: wordScores
       })
     };
