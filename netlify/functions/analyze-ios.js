@@ -1,119 +1,168 @@
 const sdk = require("microsoft-cognitiveservices-speech-sdk");
 
-const cleanWord = (word) => word.toLowerCase().replace(/[^\w]/g, '');
+const cleanWord = (w) => w.toLowerCase().replace(/[^\w]/g, '');
 
 const wordSimilarity = (a, b) => {
-  a = cleanWord(a);
-  b = cleanWord(b);
+  a = cleanWord(a); b = cleanWord(b);
   if (a === b) return 1.0;
-  if (a.length === 0 || b.length === 0) return 0.0;
+  if (!a.length || !b.length) return 0.0;
   if (a.startsWith(b) || b.startsWith(a)) return 0.7;
-  
   let matches = 0;
   const shorter = a.length < b.length ? a : b;
-  const longer = a.length < b.length ? b : a;
-  for (let i = 0; i < shorter.length; i++) {
-    if (longer.includes(shorter[i])) matches++;
-  }
+  const longer  = a.length < b.length ? b : a;
+  for (const c of shorter) { if (longer.includes(c)) matches++; }
   return matches / longer.length;
 };
 
+// Phonemes that define each accent — scoring poorly means extra penalty
+const criticalPhonemes = {
+  'en-US': new Set(['ɹ', 'æ', 'eɪ', 'aɪ', 'oʊ', 'ɾ', 'ʌ', 'θ', 'ð', 'w', 'ŋ']),
+  'en-GB': new Set(['ɑː', 'ɒ', 'əʊ', 'ɪə', 'eə', 'ʊə', 'ɔː', 'θ', 'ð', 'ɪ', 'ʌ', 'ŋ'])
+};
+
+// Phonemes specific to one accent — don't penalise the other for missing them
+const excludePhonemes = {
+  'en-US': new Set(['ɒ', 'ɑː', 'ɔː', 'əʊ', 'ɪə', 'eə', 'ʊə']),
+  'en-GB': new Set(['oʊ', 'ɾ', 'æ'])
+};
+
 exports.handler = async (event) => {
-  if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method Not Allowed" };
+  if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
 
   try {
     const { audio, referenceText, locale } = JSON.parse(event.body);
-    const audioBuffer = Buffer.from(audio, 'base64');
-    const resolvedLocale = locale || "en-US";
+    const audioBuffer    = Buffer.from(audio, 'base64');
+    const resolvedLocale = locale || 'en-US';
+    const critical       = criticalPhonemes[resolvedLocale] || criticalPhonemes['en-US'];
+    const exclude        = excludePhonemes[resolvedLocale]  || new Set();
 
-    const speechConfig = sdk.SpeechConfig.fromSubscription(process.env.AZURE_SPEECH_KEY, process.env.AZURE_SPEECH_REGION);
-    speechConfig.speechRecognitionLanguage = resolvedLocale;
+    const baseCfg = sdk.SpeechConfig.fromSubscription(process.env.AZURE_SPEECH_KEY, process.env.AZURE_SPEECH_REGION);
+    baseCfg.speechRecognitionLanguage = resolvedLocale;
 
     const [freeResult, assessedResult] = await Promise.all([
 
-      // Pass 1: Free recognition with correct locale
+      // Pass 1: honest transcription with correct locale
       new Promise((resolve, reject) => {
-        const pushStream = sdk.AudioInputStream.createPushStream();
-        pushStream.write(audioBuffer);
-        pushStream.close();
-        const audioConfig = sdk.AudioConfig.fromStreamInput(pushStream);
-        // Use locale-specific speech config for Pass 1 too
-        const localeSpeechConfig = sdk.SpeechConfig.fromSubscription(process.env.AZURE_SPEECH_KEY, process.env.AZURE_SPEECH_REGION);
-        localeSpeechConfig.speechRecognitionLanguage = resolvedLocale;
-        const recognizer = new sdk.SpeechRecognizer(localeSpeechConfig, audioConfig);
-        recognizer.recognizeOnceAsync(res => resolve(res), err => reject(err));
+        const cfg = sdk.SpeechConfig.fromSubscription(process.env.AZURE_SPEECH_KEY, process.env.AZURE_SPEECH_REGION);
+        cfg.speechRecognitionLanguage = resolvedLocale;
+        const stream = sdk.AudioInputStream.createPushStream();
+        stream.write(audioBuffer); stream.close();
+        const rec = new sdk.SpeechRecognizer(cfg, sdk.AudioConfig.fromStreamInput(stream));
+        rec.recognizeOnceAsync(r => resolve(r), e => reject(e));
       }),
 
-      // Pass 2: Pronunciation assessment
+      // Pass 2: pronunciation assessment
       new Promise((resolve, reject) => {
-        const pronConfig = new sdk.PronunciationAssessmentConfig(
+        const pron = new sdk.PronunciationAssessmentConfig(
           referenceText,
           sdk.PronunciationAssessmentGradingSystem.HundredMark,
           sdk.PronunciationAssessmentGranularity.Phoneme,
           true
         );
-        pronConfig.enableProsody = true;
-
-        const pushStream = sdk.AudioInputStream.createPushStream();
-        pushStream.write(audioBuffer);
-        pushStream.close();
-        const audioConfig = sdk.AudioConfig.fromStreamInput(pushStream);
-        const recognizer = new sdk.SpeechRecognizer(speechConfig, audioConfig);
-        pronConfig.applyTo(recognizer);
-        recognizer.recognizeOnceAsync(res => resolve(res), err => reject(err));
+        pron.enableProsody = true;
+        const stream = sdk.AudioInputStream.createPushStream();
+        stream.write(audioBuffer); stream.close();
+        const rec = new sdk.SpeechRecognizer(baseCfg, sdk.AudioConfig.fromStreamInput(stream));
+        pron.applyTo(rec);
+        rec.recognizeOnceAsync(r => resolve(r), e => reject(e));
       })
-
     ]);
 
-    const honestHeard = freeResult.text || "";
-    const heardWords = honestHeard.split(' ').filter(w => w.length > 0);
-    const referenceWords = referenceText.split(' ').filter(w => w.length > 0);
+    const honestHeard  = freeResult.text || '';
+    const heardWords   = honestHeard.split(' ').filter(w => w);
+    const refWords     = referenceText.split(' ').filter(w => w);
+
+    // Comprehensibility: % of reference words found in what was heard
+    const cleanRefWords   = refWords.map(cleanWord);
+    const cleanHeardWords = heardWords.map(cleanWord);
+    const matchedCount    = cleanRefWords.filter(w => cleanHeardWords.includes(w)).length;
+    const comprehensibility = Math.round((matchedCount / Math.max(cleanRefWords.length, 1)) * 100);
+
     const assessmentResult = sdk.PronunciationAssessmentResult.fromResult(assessedResult);
 
-    const wordScores = assessmentResult.detailResult.Words.map((w, index) => {
-      const phons = w.Phonemes ? w.Phonemes.map(p => ({
-        sound: p.Phoneme,
-        score: p.PronunciationAssessment ? p.PronunciationAssessment.AccuracyScore : 100
-      })) : [];
+    // Track phoneme issues for main challenge
+    const phonemeIssues = {}; // sound -> { count, totalScore, isCritical }
+
+    const wordScores = assessmentResult.detailResult.Words.map((w, i) => {
+      const phons = (w.Phonemes || []).map(p => {
+        const sound = p.Phoneme;
+        let score   = p.PronunciationAssessment ? p.PronunciationAssessment.AccuracyScore : 100;
+
+        // Don't penalise accent-excluded phonemes
+        if (exclude.has(sound)) return { sound, score: 100 };
+
+        // Extra penalty for accent-critical phonemes when scored poorly
+        if (critical.has(sound) && score < 65) {
+          score = Math.max(0, score - 10);
+        }
+
+        // Track problematic phonemes
+        if (score < 75) {
+          if (!phonemeIssues[sound]) phonemeIssues[sound] = { count: 0, totalScore: 0, isCritical: critical.has(sound) };
+          phonemeIssues[sound].count++;
+          phonemeIssues[sound].totalScore += score;
+        }
+
+        return { sound, score };
+      });
 
       let accuracy = w.PronunciationAssessment ? w.PronunciationAssessment.AccuracyScore : 100;
 
-      const heardWord = heardWords[index] || "";
-      const refWord = referenceWords[index] || w.Word;
-      const similarity = wordSimilarity(heardWord, refWord);
+      // Cross-reference with honest transcription
+      const heardWord = heardWords[i] || '';
+      const refWord   = refWords[i] || w.Word;
+      const sim       = wordSimilarity(heardWord, refWord);
+      if      (sim < 0.6 && heardWord) { accuracy = Math.min(accuracy, 40); phons.forEach(p => { p.score = Math.min(p.score, 40); }); }
+      else if (sim < 0.8)              { accuracy = Math.min(accuracy, 70); }
 
-      if (similarity < 0.6 && heardWord.length > 0) {
-        accuracy = Math.min(accuracy, 40);
-        phons.forEach(p => { p.score = Math.min(p.score, 40); });
-      } else if (similarity < 0.8) {
-        accuracy = Math.min(accuracy, 70);
-      }
+      const worstPhoneme = phons.length > 0 ? Math.min(...phons.map(p => p.score)) : 100;
+      if (worstPhoneme < 80 && accuracy > 80) accuracy = Math.min(accuracy, 79);
 
-      // Find the single worst phoneme regardless of overall score
-      // This surfaces subtle errors even on high-scoring words
-      const worstPhonemeScore = phons.length > 0 ? Math.min(...phons.map(p => p.score)) : 100;
-
-      // If any phoneme is below 80, flag the word even if overall accuracy is high
-      if (worstPhonemeScore < 80 && accuracy > 80) {
-        accuracy = Math.min(accuracy, 79);
-      }
-
-      return {
-        word: w.Word,
-        accuracy,
-        phonemes: phons,
-        worstPhonemeScore
-      };
+      return { word: w.Word, accuracy, phonemes: phons, worstPhonemeScore: worstPhoneme };
     });
+
+    // Main challenge: most recurring critical phoneme with lowest average score
+    let mainChallenge = null;
+    const issueEntries = Object.entries(phonemeIssues);
+    if (issueEntries.length > 0) {
+      issueEntries.sort((a, b) => {
+        const aScore = a[1].count + (a[1].isCritical ? 3 : 0);
+        const bScore = b[1].count + (b[1].isCritical ? 3 : 0);
+        return bScore - aScore;
+      });
+      const [sound, data] = issueEntries[0];
+      mainChallenge = {
+        phoneme:      sound,
+        occurrences:  data.count,
+        averageScore: Math.round(data.totalScore / data.count),
+        isCritical:   data.isCritical
+      };
+    }
+
+    // Intonation note from prosody score
+    const prosody = Math.round(assessmentResult.prosodyScore || assessmentResult.accuracyScore);
+    let intonationNote = null;
+    if (prosody < 45) {
+      intonationNote = resolvedLocale === 'en-GB'
+        ? "Ritmo plano — o inglês britânico tem sílabas tônicas bem marcadas e melodia clara."
+        : "Ritmo plano — o inglês americano tem melodia suave e palavras-chave bem enfatizadas.";
+    } else if (prosody < 65) {
+      intonationNote = "Entonação razoável — tente enfatizar as palavras mais importantes da frase.";
+    } else if (prosody >= 82) {
+      intonationNote = "Entonação excelente! Soa muito natural. 🎵";
+    }
 
     return {
       statusCode: 200,
       body: JSON.stringify({
-        score: Math.round(assessmentResult.accuracyScore),
-        fluency: Math.round(assessmentResult.fluencyScore),
-        prosody: Math.round(assessmentResult.prosodyScore || assessmentResult.accuracyScore),
-        heard: honestHeard,
-        words: wordScores
+        score:            Math.round(assessmentResult.accuracyScore),
+        fluency:          Math.round(assessmentResult.fluencyScore),
+        prosody,
+        heard:            honestHeard,
+        words:            wordScores,
+        comprehensibility,
+        mainChallenge,
+        intonationNote
       })
     };
 
