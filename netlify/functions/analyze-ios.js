@@ -14,13 +14,11 @@ const wordSimilarity = (a, b) => {
   return matches / longer.length;
 };
 
-// Phonemes that define each accent — scoring poorly means extra penalty
 const criticalPhonemes = {
   'en-US': new Set(['ɹ', 'æ', 'eɪ', 'aɪ', 'oʊ', 'ɾ', 'ʌ', 'θ', 'ð', 'w', 'ŋ']),
   'en-GB': new Set(['ɑː', 'ɒ', 'əʊ', 'ɪə', 'eə', 'ʊə', 'ɔː', 'θ', 'ð', 'ɪ', 'ʌ', 'ŋ'])
 };
 
-// Phonemes specific to one accent — don't penalise the other for missing them
 const excludePhonemes = {
   'en-US': new Set(['ɒ', 'ɑː', 'ɔː', 'əʊ', 'ɪə', 'eə', 'ʊə']),
   'en-GB': new Set(['oʊ', 'ɾ', 'æ'])
@@ -30,7 +28,7 @@ exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
 
   try {
-    const { audio, referenceText, locale } = JSON.parse(event.body);
+    const { audio, referenceText, locale, lightPass = false } = JSON.parse(event.body);
     const audioBuffer    = Buffer.from(audio, 'base64');
     const resolvedLocale = locale || 'en-US';
     const critical       = criticalPhonemes[resolvedLocale] || criticalPhonemes['en-US'];
@@ -41,7 +39,7 @@ exports.handler = async (event) => {
 
     const [freeResult, assessedResult] = await Promise.all([
 
-      // Pass 1: honest transcription with correct locale
+      // Pass 1: honest transcription — always runs
       new Promise((resolve, reject) => {
         const cfg = sdk.SpeechConfig.fromSubscription(process.env.AZURE_SPEECH_KEY, process.env.AZURE_SPEECH_REGION);
         cfg.speechRecognitionLanguage = resolvedLocale;
@@ -51,52 +49,68 @@ exports.handler = async (event) => {
         rec.recognizeOnceAsync(r => resolve(r), e => reject(e));
       }),
 
-      // Pass 2: pronunciation assessment
-      new Promise((resolve, reject) => {
-        const pron = new sdk.PronunciationAssessmentConfig(
-          referenceText,
-          sdk.PronunciationAssessmentGradingSystem.HundredMark,
-          sdk.PronunciationAssessmentGranularity.Phoneme,
-          true
-        );
-        pron.enableProsody = true;
-        const stream = sdk.AudioInputStream.createPushStream();
-        stream.write(audioBuffer); stream.close();
-        const rec = new sdk.SpeechRecognizer(baseCfg, sdk.AudioConfig.fromStreamInput(stream));
-        pron.applyTo(rec);
-        rec.recognizeOnceAsync(r => resolve(r), e => reject(e));
-      })
+      // Pass 2: pronunciation assessment — skipped on light pass
+      lightPass
+        ? Promise.resolve(null)
+        : new Promise((resolve, reject) => {
+            const pron = new sdk.PronunciationAssessmentConfig(
+              referenceText,
+              sdk.PronunciationAssessmentGradingSystem.HundredMark,
+              sdk.PronunciationAssessmentGranularity.Phoneme,
+              true
+            );
+            pron.enableProsody = true;
+            const stream = sdk.AudioInputStream.createPushStream();
+            stream.write(audioBuffer); stream.close();
+            const rec = new sdk.SpeechRecognizer(baseCfg, sdk.AudioConfig.fromStreamInput(stream));
+            pron.applyTo(rec);
+            rec.recognizeOnceAsync(r => resolve(r), e => reject(e));
+          })
     ]);
 
-    const honestHeard  = freeResult.text || '';
-    const heardWords   = honestHeard.split(' ').filter(w => w);
-    const refWords     = referenceText.split(' ').filter(w => w);
+    const honestHeard = freeResult.text || '';
+    const heardWords  = honestHeard.split(' ').filter(w => w);
+    const refWords    = referenceText.split(' ').filter(w => w);
 
-    // Comprehensibility: % of reference words found in what was heard
     const cleanRefWords   = refWords.map(cleanWord);
     const cleanHeardWords = heardWords.map(cleanWord);
     const matchedCount    = cleanRefWords.filter(w => cleanHeardWords.includes(w)).length;
     const comprehensibility = Math.round((matchedCount / Math.max(cleanRefWords.length, 1)) * 100);
 
+    // Light pass early return — only transcription, no phoneme data
+    if (lightPass) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          score:            comprehensibility,
+          fluency:          comprehensibility,
+          prosody:          50,
+          heard:            honestHeard,
+          words:            refWords.map(w => ({ word: w, accuracy: comprehensibility, phonemes: [] })),
+          comprehensibility,
+          mainChallenge:    null,
+          intonationNote:   null,
+          lightPass:        true
+        })
+      };
+    }
+
+    // Full pass — pronunciation assessment
     const assessmentResult = sdk.PronunciationAssessmentResult.fromResult(assessedResult);
 
-    // Track phoneme issues for main challenge
-    const phonemeIssues = {}; // sound -> { count, totalScore, isCritical }
+    const phonemeIssues = {};
 
     const wordScores = assessmentResult.detailResult.Words.map((w, i) => {
       const phons = (w.Phonemes || []).map(p => {
         const sound = p.Phoneme;
         let score   = p.PronunciationAssessment ? p.PronunciationAssessment.AccuracyScore : 100;
 
-        // Don't penalise accent-excluded phonemes
         if (exclude.has(sound)) return { sound, score: 100 };
 
-        // Extra penalty for accent-critical phonemes when scored poorly
         if (critical.has(sound) && score < 65) {
           score = Math.max(0, score - 10);
         }
 
-        // Track problematic phonemes
         if (score < 75) {
           if (!phonemeIssues[sound]) phonemeIssues[sound] = { count: 0, totalScore: 0, isCritical: critical.has(sound) };
           phonemeIssues[sound].count++;
@@ -108,7 +122,6 @@ exports.handler = async (event) => {
 
       let accuracy = w.PronunciationAssessment ? w.PronunciationAssessment.AccuracyScore : 100;
 
-      // Cross-reference with honest transcription
       const heardWord = heardWords[i] || '';
       const refWord   = refWords[i] || w.Word;
       const sim       = wordSimilarity(heardWord, refWord);
@@ -121,7 +134,6 @@ exports.handler = async (event) => {
       return { word: w.Word, accuracy, phonemes: phons, worstPhonemeScore: worstPhoneme };
     });
 
-    // Main challenge: most recurring critical phoneme with lowest average score
     let mainChallenge = null;
     const issueEntries = Object.entries(phonemeIssues);
     if (issueEntries.length > 0) {
@@ -139,7 +151,6 @@ exports.handler = async (event) => {
       };
     }
 
-    // Intonation note from prosody score
     const prosody = Math.round(assessmentResult.prosodyScore || assessmentResult.accuracyScore);
     let intonationNote = null;
     if (prosody < 45) {
