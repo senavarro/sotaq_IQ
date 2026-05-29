@@ -125,8 +125,9 @@ exports.handler = async (event) => {
       const heardWord = heardWords[i] || '';
       const refWord   = refWords[i] || w.Word;
       const sim       = wordSimilarity(heardWord, refWord);
-      if      (sim < 0.6 && heardWord) { accuracy = Math.min(accuracy, 40); phons.forEach(p => { p.score = Math.min(p.score, 40); }); }
-      else if (sim < 0.8)              { accuracy = Math.min(accuracy, 70); }
+      if      (sim < 0.5 && heardWord) { accuracy = Math.min(accuracy, 30); phons.forEach(p => { p.score = Math.min(p.score, 30); }); }
+      else if (sim < 0.7 && heardWord) { accuracy = Math.min(accuracy, 55); phons.forEach(p => { p.score = Math.min(p.score, 55); }); }
+      else if (sim < 0.85)             { accuracy = Math.min(accuracy, 75); }
 
       const worstPhoneme = phons.length > 0 ? Math.min(...phons.map(p => p.score)) : 100;
       if (worstPhoneme < 80 && accuracy > 80) accuracy = Math.min(accuracy, 79);
