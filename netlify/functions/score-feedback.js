@@ -9,11 +9,18 @@ exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
 
   try {
-    const { score, feedback, phrase } = JSON.parse(event.body);
+    const { score, feedback, phrase, email, accent } = JSON.parse(event.body);
 
     const { error } = await supabase
       .from('score_feedback')
-      .insert([{ score, feedback, phrase, created_at: new Date().toISOString() }]);
+      .insert([{
+        score,
+        feedback,
+        phrase,
+        email,
+        accent,
+        created_at: new Date().toISOString()
+      }]);
 
     if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
 
