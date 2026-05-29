@@ -12,10 +12,25 @@ exports.handler = async (event) => {
     const { email, daily_count, total_xp } = JSON.parse(event.body);
     if (!email) return { statusCode: 400, body: JSON.stringify({ error: 'Email required' }) };
 
+    const normalizedEmail = email.toLowerCase().trim();
+    const today = new Date().toISOString().split('T')[0];
+
+    // Fetch current practice_dates
+    const { data: current } = await supabase
+      .from('user_stats')
+      .select('practice_dates')
+      .ilike('email', normalizedEmail)
+      .single();
+
+    const existing = current?.practice_dates || [];
+    const updated = existing.includes(today)
+      ? existing
+      : [...existing, today].slice(-30); // keep last 30 days max
+
     const { error } = await supabase
       .from('user_stats')
-      .update({ daily_count, total_xp })
-      .ilike('email', email.toLowerCase().trim());
+      .update({ daily_count, total_xp, practice_dates: updated })
+      .ilike('email', normalizedEmail);
 
     if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
 
