@@ -43,7 +43,7 @@ exports.handler = async (event) => {
       .from('user_stats')
       .insert([{
         email: normalizedEmail,
-        daily_count: 7,
+        daily_count: 5,
         total_xp: 0,
         last_played_date: today,
         streak: 0
