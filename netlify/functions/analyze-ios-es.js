@@ -20,8 +20,8 @@ const wordSimilarity = (a, b) => {
 };
 
 const criticalPhonemes = {
-  'es-ES': new Set(['r', 'θ', 'x', 'ʎ', 'ɲ', 'ð', 'β', 'tʃ']),
-  'es-MX': new Set(['r', 'ɾ', 's', 'j', 'x', 'ɲ', 'ð', 't', 'p'])
+  'es-ES': new Set(['r', 'θ', 'x', 'ʎ', 'ɲ', 'ð', 'β', 'tʃ', 't', 'd']),
+  'es-MX': new Set(['r', 'ɾ', 's', 'j', 'x', 'ɲ', 'ð', 't', 'p', 'd'])
 };
 
 const excludePhonemes = {
