@@ -111,39 +111,32 @@ exports.handler = async (event) => {
     // Full pass — pronunciation assessment
     const assessmentResult = sdk.PronunciationAssessmentResult.fromResult(assessedResult);
 
-    // ===== TEMPORARY DEBUG LOGGING — remove once scoring is settled =====
-    // Logs the raw Azure numbers before any of our own penalty/critical-
-    // phoneme logic touches them, so we can see ground truth instead of
-    // inferring it from what the client displays. View these in the
-    // Netlify dashboard under Functions → analyze-ios-es → real-time logs,
-    // or via `netlify functions:log analyze-ios-es` if using the CLI.
-    console.log('=== analyze-ios-es DEBUG ===');
-    console.log('resolvedLocale:', resolvedLocale);
-    console.log('referenceText:', referenceText);
-    console.log('honestHeard (Pass 1):', honestHeard);
-    console.log('utterance-level scores:', JSON.stringify({
-      accuracyScore: assessmentResult.accuracyScore,
-      fluencyScore: assessmentResult.fluencyScore,
-      prosodyScore: assessmentResult.prosodyScore,
-      completenessScore: assessmentResult.completenessScore
-    }));
-    console.log('per-word raw Azure data:', JSON.stringify(
-      assessmentResult.detailResult.Words.map(w => ({
-        word: w.Word,
-        accuracyScore: w.PronunciationAssessment ? w.PronunciationAssessment.AccuracyScore : null,
-        errorType: w.PronunciationAssessment ? w.PronunciationAssessment.ErrorType : null,
-        phonemes: (w.Phonemes || []).map(p => ({
-          sound: p.Phoneme,
-          score: p.PronunciationAssessment ? p.PronunciationAssessment.AccuracyScore : null
-        }))
-      }))
-    ));
-    console.log('=== END DEBUG ===');
-    // ===== END TEMPORARY DEBUG LOGGING =====
+    // Debug data is built below and attached to the response itself as a
+    // `debug` field (rather than relying solely on console.log, since the
+    // Netlify dashboard's log search hasn't been showing entries reliably).
+    // The iOS client prints this straight to Xcode's console when present.
+    const debugInfo = {
+      resolvedLocale,
+      referenceText,
+      honestHeard,
+      utteranceScores: {
+        accuracyScore: assessmentResult.accuracyScore,
+        fluencyScore: assessmentResult.fluencyScore,
+        prosodyScore: assessmentResult.prosodyScore,
+        completenessScore: assessmentResult.completenessScore
+      }
+    };
 
     const phonemeIssues = {};
 
     const wordScores = assessmentResult.detailResult.Words.map((w, i) => {
+      const rawWordAccuracy = w.PronunciationAssessment ? w.PronunciationAssessment.AccuracyScore : null;
+      const rawErrorType = w.PronunciationAssessment ? w.PronunciationAssessment.ErrorType : null;
+      const rawPhonemes = (w.Phonemes || []).map(p => ({
+        sound: p.Phoneme,
+        score: p.PronunciationAssessment ? p.PronunciationAssessment.AccuracyScore : null
+      }));
+
       const phons = (w.Phonemes || []).map(p => {
         const sound = p.Phoneme;
         let score   = p.PronunciationAssessment ? p.PronunciationAssessment.AccuracyScore : 100;
@@ -191,18 +184,29 @@ exports.handler = async (event) => {
       const worstPhoneme = phons.length > 0 ? Math.min(...phons.map(p => p.score)) : 100;
       if (worstPhoneme < 80 && accuracy > 80) accuracy = Math.min(accuracy, 79);
 
-      return { word: w.Word, accuracy, phonemes: phons, worstPhonemeScore: worstPhoneme };
+      return {
+        word: w.Word,
+        accuracy,
+        phonemes: phons,
+        worstPhonemeScore: worstPhoneme,
+        _debugRaw: { rawWordAccuracy, rawErrorType, rawPhonemes }
+      };
     });
 
-    // ===== TEMPORARY DEBUG LOGGING (continued) =====
-    const overallMinPhoneme = wordScores.length
+    debugInfo.perWord = wordScores.map(w => ({
+      word: w.word,
+      rawAccuracy: w._debugRaw.rawWordAccuracy,
+      rawErrorType: w._debugRaw.rawErrorType,
+      rawPhonemes: w._debugRaw.rawPhonemes,
+      postProcessedAccuracy: w.accuracy,
+      postProcessedWorstPhoneme: w.worstPhonemeScore
+    }));
+    debugInfo.overallMinPhoneme = wordScores.length
       ? Math.min(...wordScores.map(w => w.worstPhonemeScore))
       : null;
-    console.log('post-processing word scores:', JSON.stringify(
-      wordScores.map(w => ({ word: w.word, accuracy: w.accuracy, worstPhonemeScore: w.worstPhonemeScore }))
-    ));
-    console.log('overallMinPhoneme (this is the value the client formula weights at 0.5):', overallMinPhoneme);
-    // ===== END TEMPORARY DEBUG LOGGING (continued) =====
+    // Strip the temporary _debugRaw field so it doesn't leak into the
+    // normal `words` payload the client renders.
+    wordScores.forEach(w => { delete w._debugRaw; });
 
     let mainChallenge = null;
     const issueEntries = Object.entries(phonemeIssues);
@@ -241,7 +245,8 @@ exports.handler = async (event) => {
         words:            wordScores,
         comprehensibility,
         mainChallenge,
-        intonationNote
+        intonationNote,
+        debug:            debugInfo
       })
     };
 
