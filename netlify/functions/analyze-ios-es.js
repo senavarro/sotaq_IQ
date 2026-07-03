@@ -73,6 +73,13 @@ exports.handler = async (event) => {
               true // enableMiscueCalculation — read below via ErrorType
             );
             pron.enableProsody = true;
+            // Without this, Azure doesn't populate a usable phoneme symbol
+            // per phoneme (came back as empty strings in testing) — this is
+            // what SpanishPhonemeUtils.tipForSound() keys off of, so without
+            // it every phoneme tip silently fell back to the generic
+            // "sonido específico" message regardless of what was actually
+            // mispronounced.
+            pron.phonemeAlphabet = "IPA";
             const stream = sdk.AudioInputStream.createPushStream();
             stream.write(audioBuffer); stream.close();
             const rec = new sdk.SpeechRecognizer(baseCfg, sdk.AudioConfig.fromStreamInput(stream));
